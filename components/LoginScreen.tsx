@@ -170,12 +170,30 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     naver.go_login(); // Naver OAuth 페이지로 리다이렉트
   };
 
-  const handleDemo = () => {
-    onLogin({ name: 'SEASTAR 사용자', email: 'user@seastar.com', provider: 'demo' });
+  // ── 게스트 / 관리자 로그인 ──────────────────────────────
+  const [showGuestForm, setShowGuestForm] = useState(false);
+  const [guestId, setGuestId] = useState('');
+  const [guestPw, setGuestPw] = useState('');
+  const [guestError, setGuestError] = useState('');
+
+  const GUEST_ACCOUNTS: Record<string, { pw: string; name: string; uid: string }> = {
+    'guest':  { pw: 'guest',  name: '게스트',    uid: 'guest_user' },
+    'admin':  { pw: '2239',   name: '관리자',    uid: 'admin_user' },
   };
 
-  /* ── 설정 여부 표시 ── */
-  const hasCredentials = GOOGLE_CLIENT_ID || KAKAO_APP_KEY || NAVER_CLIENT_ID;
+  const handleGuestLogin = () => {
+    const acc = GUEST_ACCOUNTS[guestId.toLowerCase()];
+    if (!acc) {
+      setGuestError('존재하지 않는 계정입니다.');
+      return;
+    }
+    if (acc.pw !== guestPw) {
+      setGuestError('비밀번호가 틀렸습니다.');
+      return;
+    }
+    setGuestError('');
+    onLogin({ name: acc.name, email: `${guestId}@scms.local`, provider: 'local', uid: acc.uid });
+  };
 
   return (
     <div className="h-[100dvh] flex flex-col items-center justify-center bg-slate-900 overflow-hidden relative">
@@ -282,14 +300,54 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <div className="flex-1 h-px bg-slate-700/60" />
           </div>
 
-          {/* Demo / 게스트 */}
-          <button
-            onClick={handleDemo}
-            disabled={loading !== null}
-            className="w-full py-3 rounded-xl text-slate-400 hover:text-white text-xs font-semibold border border-slate-700/50 hover:border-slate-500 bg-transparent hover:bg-slate-700/30 transition-all disabled:opacity-50 mb-6"
-          >
-            {hasCredentials ? '게스트로 입장 (데모)' : '⚡ Demo 모드로 시작'}
-          </button>
+          {/* ── 게스트 / 관리자 로그인 ── */}
+          {!showGuestForm ? (
+            <button
+              onClick={() => setShowGuestForm(true)}
+              disabled={loading !== null}
+              className="w-full py-3 rounded-xl text-slate-400 hover:text-white text-xs font-semibold border border-slate-700/50 hover:border-slate-500 bg-transparent hover:bg-slate-700/30 transition-all disabled:opacity-50"
+            >
+              🔑 게스트 / 관리자 로그인
+            </button>
+          ) : (
+            <div className="rounded-xl border border-slate-600/50 bg-slate-800/50 p-4 flex flex-col gap-2">
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">ID / Password 입력</p>
+              {guestError && (
+                <p className="text-[10px] text-red-400 font-medium">⚠ {guestError}</p>
+              )}
+              <input
+                type="text"
+                placeholder="ID  (guest / admin)"
+                value={guestId}
+                onChange={e => { setGuestId(e.target.value); setGuestError(''); }}
+                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+                autoFocus
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={guestPw}
+                onChange={e => { setGuestPw(e.target.value); setGuestError(''); }}
+                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+              />
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => { setShowGuestForm(false); setGuestId(''); setGuestPw(''); setGuestError(''); }}
+                  className="flex-1 py-2 text-xs text-slate-400 border border-slate-700 rounded-lg hover:bg-slate-700/30 transition-colors"
+                >취소</button>
+                <button
+                  onClick={handleGuestLogin}
+                  className="flex-1 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                >입장</button>
+              </div>
+              <p className="text-[9px] text-slate-600 text-center mt-0.5">
+                guest / guest &nbsp;·&nbsp; admin / ****
+              </p>
+            </div>
+          )}
+          <div className="mb-2" />
 
           {/* ── VIDEO (카드 하단 embedded) ── */}
           <div className="-mx-10 h-[120px] relative overflow-hidden group flex-shrink-0">

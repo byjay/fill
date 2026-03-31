@@ -33,7 +33,8 @@
       "Bash(find E:/code-project/calble -name .env* -not -path */node_modules/*)",
       "Bash(find E:/code-project/calble -name *.env -not -path */node_modules/*)",
       "Bash(find E:/code-project/calble -name firebase* -o -name firebaseConfig*)",
-      "Bash(grep -r \"kakaoAppKey\\\\|kakao_app\\\\|KAKAO_APP\\\\|naver.*client\\\\|NAVER.*CLIENT\" E:/code-project/calble/ --include=*.ts --include=*.tsx --include=*.js --include=*.env*)"
+      "Bash(grep -r \"kakaoAppKey\\\\|kakao_app\\\\|KAKAO_APP\\\\|naver.*client\\\\|NAVER.*CLIENT\" E:/code-project/calble/ --include=*.ts --include=*.tsx --include=*.js --include=*.env*)",
+      "Bash(curl -s \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects/fill\" -H \"Authorization: Bearer drYWh_j1l6O6j35rYaAeYxD9UQRYo7x48ANEtTK6-tY.TKMK540iwuF62rc9ONGN4b0Cik_K25-yNpZb5EwtNp8\")"
     ]
   }
 }

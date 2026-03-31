@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
-import { Plus, Ship, Trash2, ChevronRight, Clock, Database } from 'lucide-react';
+import { Plus, Ship, Trash2, ChevronRight, Clock, Database, LogIn } from 'lucide-react';
 
-export default function ProjectSelectionScreen() {
+interface Props {
+  userName?: string;
+  onLogout?: () => void;
+}
+
+export default function ProjectSelectionScreen({ userName, onLogout }: Props) {
   const { projects, selectProject, createProject, removeProject, isLoading } = useProject();
   const [showCreate, setShowCreate] = useState(false);
   const [vesselName, setVesselName] = useState('');
@@ -30,14 +35,31 @@ export default function ProjectSelectionScreen() {
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between">
         <img src="/logo.jpg" alt="SEASTAR" className="h-9 object-contain" />
-        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">CABLE MANAGEMENT SYSTEM</span>
+        <div className="flex items-center gap-3">
+          {userName && (
+            <span className="text-xs text-slate-300 font-medium hidden sm:block">
+              👤 {userName}
+            </span>
+          )}
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">CABLE MANAGEMENT SYSTEM</span>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/40 px-2 py-1 rounded transition-colors"
+            >
+              <LogIn size={10} className="rotate-180" /> 로그아웃
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="flex-1 flex items-start justify-center pt-12 px-4">
         <div className="w-full max-w-2xl">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-xl font-black text-white">프로젝트 선택</h1>
+              <h1 className="text-xl font-black text-white">
+                {userName ? `${userName}의 프로젝트` : '프로젝트 선택'}
+              </h1>
               <p className="text-xs text-slate-400 mt-0.5">호선을 선택하거나 새 프로젝트를 등록하세요</p>
             </div>
             <button
@@ -83,9 +105,7 @@ export default function ProjectSelectionScreen() {
                 <button
                   onClick={() => { setShowCreate(false); setVesselName(''); setVesselNo(''); }}
                   className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white bg-slate-700 rounded-lg transition-colors"
-                >
-                  취소
-                </button>
+                >취소</button>
                 <button
                   onClick={handleCreate}
                   disabled={!vesselName.trim() || creating}
@@ -99,12 +119,21 @@ export default function ProjectSelectionScreen() {
 
           {/* Project list */}
           {isLoading ? (
-            <div className="text-center py-12 text-slate-500">로딩 중...</div>
+            <div className="text-center py-12 text-slate-500">
+              <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              프로젝트 로딩 중...
+            </div>
           ) : projects.length === 0 ? (
             <div className="text-center py-16 border border-dashed border-slate-700 rounded-xl">
               <Ship size={40} className="text-slate-600 mx-auto mb-3" />
               <p className="text-slate-400 font-medium">등록된 프로젝트가 없습니다</p>
               <p className="text-xs text-slate-500 mt-1">위의 "호선 등록" 버튼으로 첫 프로젝트를 만드세요</p>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="mt-4 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition-colors mx-auto"
+              >
+                <Plus size={16} /> 첫 호선 등록하기
+              </button>
             </div>
           ) : (
             <div className="space-y-2">

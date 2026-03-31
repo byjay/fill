@@ -5,9 +5,10 @@ class SeastarDB extends Dexie {
   projects!: Table<Project, string>;
 
   constructor() {
-    super('SeastarProDB_v1');
+    super('SeastarProDB_v2');
+    // v2: userId 인덱스 추가
     this.version(1).stores({
-      projects: 'id, name, vesselNo, createdAt, updatedAt',
+      projects: 'id, name, vesselNo, userId, createdAt, updatedAt',
     });
   }
 }
@@ -16,7 +17,14 @@ export const db = new SeastarDB();
 
 // ── CRUD ──────────────────────────────────────────
 
-export async function getAllProjects(): Promise<Project[]> {
+/** userId 기반으로 필터 — 없으면 전체(구버전 호환) */
+export async function getAllProjects(userId?: string): Promise<Project[]> {
+  if (userId) {
+    return db.projects
+      .where('userId').equals(userId)
+      .reverse()
+      .sortBy('updatedAt');
+  }
   return db.projects.orderBy('updatedAt').reverse().toArray();
 }
 
@@ -32,11 +40,12 @@ export async function deleteProject(id: string): Promise<void> {
   await db.projects.delete(id);
 }
 
-export function createNewProject(name: string, vesselNo: string): Project {
+export function createNewProject(name: string, vesselNo: string, userId = 'anonymous'): Project {
   return {
     id: `proj_${Date.now()}`,
     name,
     vesselNo,
+    userId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     cables: [],
@@ -60,7 +69,6 @@ export function addHistory(
     cableCount: project.cables.length,
     nodeCount: project.nodes.length,
   };
-  // Keep last 200 history entries
   const history = [entry, ...project.history].slice(0, 200);
   return { ...project, history };
 }

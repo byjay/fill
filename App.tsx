@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { CableData, NodeData } from './types';
+import { CableData, NodeData, UserInfo } from './types';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import LoginScreen from './components/LoginScreen';
 import ProjectSelectionScreen from './components/ProjectSelectionScreen';
@@ -564,9 +564,10 @@ const TABS = [
 interface MainAppProps {
   onBackToProjects: () => void;
   onLogout: () => void;
+  userName?: string;
 }
 
-const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout }) => {
+const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName }) => {
   const { currentProject, projects, selectProject, updateCables, updateCablesAndNodes, clearCurrentProject } = useProject();
   const cables = currentProject?.cables ?? [];
   const nodes = currentProject?.nodes ?? [];
@@ -1118,13 +1119,38 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Session persistence helpers
+// ─────────────────────────────────────────────────────────────────────────────
+const SESSION_KEY = 'scms_user_session';
+
+function saveSession(user: UserInfo) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch { /* ignore */ }
+}
+
+function loadSession(): UserInfo | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as UserInfo;
+  } catch { return null; }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AppRouter — decides which screen to show
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AppRouter: React.FC = () => {
+  // 세션 복원: 이미 로그인했으면 'projects' 화면으로 바로 이동
+  const savedSession = loadSession();
+  const [user, setUser] = useState<UserInfo | null>(savedSession);
+  const [screen, setScreen] = useState<AppScreen>(savedSession ? 'projects' : 'login');
+
   const { currentProject, clearCurrentProject } = useProject();
   const currentProjectId = currentProject?.id ?? null;
-  const [screen, setScreen] = useState<AppScreen>('login');
 
   // When a project is selected in context, auto-advance to main
   React.useEffect(() => {
@@ -1133,45 +1159,75 @@ const AppRouter: React.FC = () => {
     }
   }, [currentProjectId, screen]);
 
-  // When project is cleared (e.g. back button calls clearCurrentProject), go back to project selection
+  // When project is cleared, go back to project selection
   React.useEffect(() => {
     if (!currentProjectId && screen === 'main') {
       setScreen('projects');
     }
   }, [currentProjectId, screen]);
 
+  const handleLogin = useCallback((userInfo?: { name: string; email: string; provider: string }) => {
+    const info: UserInfo = {
+      id: userInfo?.email || `${userInfo?.provider || 'demo'}_${Date.now()}`,
+      name: userInfo?.name || 'SEASTAR 사용자',
+      email: userInfo?.email || '',
+      provider: userInfo?.provider || 'demo',
+    };
+    setUser(info);
+    saveSession(info);
+    // ProjectProvider의 userId 업데이트
+    window.dispatchEvent(new CustomEvent('scms_user_changed', { detail: info.id }));
+    setScreen('projects');
+  }, []);
+
   const handleLogout = useCallback(() => {
     clearCurrentProject();
+    clearSession();
+    setUser(null);
     setScreen('login');
   }, [clearCurrentProject]);
 
   if (screen === 'login') {
-    return <LoginScreen onLogin={() => setScreen('projects')} />;
+    return <LoginScreen onLogin={handleLogin} />;
   }
 
   if (screen === 'projects') {
-    return <ProjectSelectionScreen />;
+    return <ProjectSelectionScreen userName={user?.name} onLogout={handleLogout} />;
   }
 
-  // main — Back button in MainApp calls clearCurrentProject() + onBackToProjects()
   return (
     <MainApp
       onBackToProjects={() => setScreen('projects')}
       onLogout={handleLogout}
+      userName={user?.name}
     />
   );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Root App
+// Root App — userId를 ProjectProvider에 주입
 // ─────────────────────────────────────────────────────────────────────────────
 
-const App: React.FC = () => {
+const AppWithProvider: React.FC = () => {
+  const savedSession = loadSession();
+  const [userId, setUserId] = React.useState<string>(savedSession?.id || 'anonymous');
+
+  // AppRouter가 로그인하면 userId도 업데이트해야 하지만,
+  // AppRouter가 localStorage에 저장하므로 페이지 새로고침 시 반영됨.
+  // 동적 업데이트: CustomEvent 사용
+  React.useEffect(() => {
+    const handler = (e: CustomEvent<string>) => setUserId(e.detail);
+    window.addEventListener('scms_user_changed', handler as EventListener);
+    return () => window.removeEventListener('scms_user_changed', handler as EventListener);
+  }, []);
+
   return (
-    <ProjectProvider>
+    <ProjectProvider userId={userId}>
       <AppRouter />
     </ProjectProvider>
   );
 };
+
+const App: React.FC = () => <AppWithProvider />;
 
 export default App;

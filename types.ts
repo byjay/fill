@@ -60,11 +60,19 @@ export interface Project {
   id: string;
   name: string;       // 호선명
   vesselNo: string;   // 호선번호
+  userId: string;     // 소유자 ID (email 또는 provider:name)
   createdAt: string;
   updatedAt: string;
   cables: CableData[];
   nodes: NodeData[];
   history: HistoryEntry[];
+}
+
+export interface UserInfo {
+  id: string;         // email 또는 provider_uniqueid
+  name: string;
+  email: string;
+  provider: string;   // 'google' | 'kakao' | 'naver' | 'demo'
 }
 
 export interface Point {

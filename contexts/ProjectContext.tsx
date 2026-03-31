@@ -13,6 +13,7 @@ interface ProjectContextValue {
   projects: Project[];
   currentProject: Project | null;
   isLoading: boolean;
+  userId: string;
   // actions
   loadProjects: () => Promise<void>;
   selectProject: (id: string) => void;
@@ -27,17 +28,31 @@ interface ProjectContextValue {
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 
-export function ProjectProvider({ children }: { children: React.ReactNode }) {
+interface ProjectProviderProps {
+  children: React.ReactNode;
+  userId?: string;
+}
+
+export function ProjectProvider({ children, userId = 'anonymous' }: ProjectProviderProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // userId가 바뀌면 해당 유저의 프로젝트만 로드
+  useEffect(() => {
+    setIsLoading(true);
+    setCurrentProject(null);
+    getAllProjects(userId).then(all => {
+      setProjects(all);
+      setIsLoading(false);
+    });
+  }, [userId]);
+
   const loadProjects = useCallback(async () => {
     setIsLoading(true);
     try {
-      const all = await getAllProjects();
+      const all = await getAllProjects(userId);
       setProjects(all);
-      // Refresh current project if it exists
       if (currentProject) {
         const updated = all.find(p => p.id === currentProject.id);
         if (updated) setCurrentProject(updated);
@@ -45,14 +60,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [currentProject]);
-
-  useEffect(() => {
-    getAllProjects().then(all => {
-      setProjects(all);
-      setIsLoading(false);
-    });
-  }, []);
+  }, [currentProject, userId]);
 
   const selectProject = useCallback((id: string) => {
     const proj = projects.find(p => p.id === id) ?? null;
@@ -60,12 +68,12 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }, [projects]);
 
   const createProject = useCallback(async (name: string, vesselNo: string): Promise<Project> => {
-    const proj = createNewProject(name, vesselNo);
+    const proj = createNewProject(name, vesselNo, userId);
     await saveProject(proj);
     setProjects(prev => [proj, ...prev]);
     setCurrentProject(proj);
     return proj;
-  }, []);
+  }, [userId]);
 
   const removeProject = useCallback(async (id: string) => {
     await deleteProject(id);
@@ -75,39 +83,21 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
   const updateCables = useCallback(async (cables: CableData[], description = '케이블 데이터 업데이트') => {
     if (!currentProject) return;
-    const updated = await updateProjectData(
-      currentProject.id,
-      cables,
-      currentProject.nodes,
-      'cable_edit',
-      description
-    );
+    const updated = await updateProjectData(currentProject.id, cables, currentProject.nodes, 'cable_edit', description);
     setCurrentProject(updated);
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
   }, [currentProject]);
 
   const updateNodes = useCallback(async (nodes: NodeData[], description = '노드 데이터 업데이트') => {
     if (!currentProject) return;
-    const updated = await updateProjectData(
-      currentProject.id,
-      currentProject.cables,
-      nodes,
-      'cable_edit',
-      description
-    );
+    const updated = await updateProjectData(currentProject.id, currentProject.cables, nodes, 'cable_edit', description);
     setCurrentProject(updated);
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
   }, [currentProject]);
 
   const updateCablesAndNodes = useCallback(async (cables: CableData[], nodes: NodeData[], description = '파일 업로드') => {
     if (!currentProject) return;
-    const updated = await updateProjectData(
-      currentProject.id,
-      cables,
-      nodes,
-      'file_upload',
-      description
-    );
+    const updated = await updateProjectData(currentProject.id, cables, nodes, 'file_upload', description);
     setCurrentProject(updated);
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
   }, [currentProject]);
@@ -129,6 +119,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       projects,
       currentProject,
       isLoading,
+      userId,
       loadProjects,
       selectProject,
       createProject,

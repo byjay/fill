@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { signInWithGoogle } from '../services/firebase';
 
 interface LoginScreenProps {
-  onLogin: (userInfo?: { name: string; email: string; provider: string }) => void;
+  onLogin: (userInfo?: { name: string; email: string; provider: string; uid?: string }) => void;
 }
 
-// ── OAuth 환경변수 (Cloudflare Pages 대시보드에서 설정) ──────────────
-const GOOGLE_CLIENT_ID  = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID  || '';
-const KAKAO_APP_KEY     = (import.meta as any).env?.VITE_KAKAO_APP_KEY      || '';
-const NAVER_CLIENT_ID   = (import.meta as any).env?.VITE_NAVER_CLIENT_ID    || '';
-const NAVER_CALLBACK    = (import.meta as any).env?.VITE_NAVER_CALLBACK_URL  || (typeof window !== 'undefined' ? window.location.origin : '');
-const BUILD_VERSION     = '3.0.0';
+// ── OAuth 환경변수 (Cloudflare Pages 환경변수에서 설정) ──────────────
+const KAKAO_APP_KEY   = (import.meta as any).env?.VITE_KAKAO_APP_KEY   || '';
+const NAVER_CLIENT_ID = (import.meta as any).env?.VITE_NAVER_CLIENT_ID  || '';
+const NAVER_CALLBACK  = (import.meta as any).env?.VITE_NAVER_CALLBACK   || (typeof window !== 'undefined' ? window.location.origin : '');
+const BUILD_VERSION   = '3.1.0';
 
 /* ─── Naver OAuth redirect handler (페이지 로드 시 hash/query 파싱) ─── */
 function parseNaverCallback(): { name: string; email: string } | null {
@@ -38,16 +38,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  /* ── Google GSI 스크립트 로드 ── */
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    if (document.getElementById('gsi-script')) return;
-    const s = document.createElement('script');
-    s.id = 'gsi-script';
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.async = true;
-    document.head.appendChild(s);
-  }, []);
+  // Google은 Firebase SDK로 처리하므로 별도 GSI 스크립트 불필요
 
   /* ── Kakao SDK 로드 ── */
   useEffect(() => {
@@ -110,41 +101,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   /* ════════════════════════════════════
      LOGIN HANDLERS
   ════════════════════════════════════ */
-  const handleGoogle = () => {
-    if (!GOOGLE_CLIENT_ID) {
-      // Demo bypass
-      onLogin({ name: 'Demo User', email: 'demo@seastar.com', provider: 'google' });
-      return;
-    }
+  const handleGoogle = async () => {
     setLoading('google');
     setError(null);
-    const google = (window as any).google;
-    if (!google?.accounts?.oauth2) {
-      setError('Google SDK 로딩 중입니다. 잠시 후 다시 시도해 주세요.');
+    try {
+      const userInfo = await signInWithGoogle();
+      onLogin({ name: userInfo.name, email: userInfo.email, provider: 'google', uid: userInfo.uid });
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setError('로그인 창이 닫혔습니다. 다시 시도해 주세요.');
+      } else {
+        setError('구글 로그인에 실패했습니다: ' + (err?.message || ''));
+      }
+    } finally {
       setLoading(null);
-      return;
     }
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: 'openid email profile',
-      callback: async (resp: any) => {
-        if (resp.error) {
-          setError('구글 로그인을 취소했습니다.');
-          setLoading(null);
-          return;
-        }
-        try {
-          const info = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${resp.access_token}` },
-          }).then(r => r.json());
-          onLogin({ name: info.name, email: info.email, provider: 'google' });
-        } catch {
-          setError('사용자 정보를 가져오지 못했습니다.');
-        }
-        setLoading(null);
-      },
-    });
-    tokenClient.requestAccessToken({ prompt: 'select_account' });
   };
 
   const handleKakao = () => {

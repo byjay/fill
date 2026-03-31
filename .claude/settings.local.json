@@ -18,7 +18,22 @@
       "Bash(find E:/code-project/calble/CABLE_V2 -name Login* -o -name login*)",
       "Bash(find E:/code-project/calble/seastar-cms-v8-enterprise -name Login* -o -name login*)",
       "Bash(find E:/code-project/calble/seastar-cms-v99 -name Login* -o -name login*)",
-      "Bash(find E:/code-project/calble/cabel_0310 -name Login* -o -name login*)"
+      "Bash(find E:/code-project/calble/cabel_0310 -name Login* -o -name login*)",
+      "Bash(curl -s -X POST \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects/fill/domains\" -H \"Authorization: Bearer drYWh_j1l6O6j35rYaAeYxD9UQRYo7x48ANEtTK6-tY.TKMK540iwuF62rc9ONGN4b0Cik_K25-yNpZb5EwtNp8\" -H \"Content-Type: application/json\" -d '{\"\"name\"\":\"\"scm.seastar.work\"\"}')",
+      "Read(//c/Users/FREE/.wrangler/config/**)",
+      "Read(//c/Users/FREE/.cloudflare/**)",
+      "Read(//c/Users/FREE/**)",
+      "Bash(Start-Sleep -Seconds 5)",
+      "Bash(curl -s https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects/fill/domains -H 'Authorization: Bearer drYWh_j1l6O6j35rYaAeYxD9UQRYo7x48ANEtTK6-tY.TKMK540iwuF62rc9ONGN4b0Cik_K25-yNpZb5EwtNp8')",
+      "mcp__Windows-MCP__Click",
+      "mcp__Windows-MCP__App",
+      "mcp__Windows-MCP__Shortcut",
+      "mcp__Windows-MCP__Type",
+      "Bash(du -sh E:/code-project/calble/CABLE_V2/*)",
+      "Bash(find E:/code-project/calble -name .env* -not -path */node_modules/*)",
+      "Bash(find E:/code-project/calble -name *.env -not -path */node_modules/*)",
+      "Bash(find E:/code-project/calble -name firebase* -o -name firebaseConfig*)",
+      "Bash(grep -r \"kakaoAppKey\\\\|kakao_app\\\\|KAKAO_APP\\\\|naver.*client\\\\|NAVER.*CLIENT\" E:/code-project/calble/ --include=*.ts --include=*.tsx --include=*.js --include=*.env*)"
     ]
   }
 }

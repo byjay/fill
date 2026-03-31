@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Project, CableData, NodeData } from '../types';
+import { Project, CableData, NodeData, HistoryEntry } from '../types';
 import {
-  getAllProjects,
-  saveProject,
-  createNewProject,
-  deleteProject,
-  updateProjectData,
-  addHistory,
-} from '../services/projectStore';
+  fetchProjects,
+  createProjectAPI,
+  updateProjectAPI,
+  deleteProjectAPI,
+  makeHistoryEntry,
+} from '../services/apiClient';
 
 interface ProjectContextValue {
   projects: Project[];
@@ -38,29 +37,34 @@ export function ProjectProvider({ children, userId = 'anonymous' }: ProjectProvi
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // userId가 바뀌면 해당 유저의 프로젝트만 로드
+  // userId 바뀌면 해당 유저 프로젝트 로드
   useEffect(() => {
     setIsLoading(true);
     setCurrentProject(null);
-    getAllProjects(userId).then(all => {
-      setProjects(all);
-      setIsLoading(false);
-    });
+    fetchProjects()
+      .then(all => setProjects(all))
+      .catch(err => {
+        console.warn('D1 fetch failed, using empty list:', err);
+        setProjects([]);
+      })
+      .finally(() => setIsLoading(false));
   }, [userId]);
 
   const loadProjects = useCallback(async () => {
     setIsLoading(true);
     try {
-      const all = await getAllProjects(userId);
+      const all = await fetchProjects();
       setProjects(all);
       if (currentProject) {
         const updated = all.find(p => p.id === currentProject.id);
         if (updated) setCurrentProject(updated);
       }
+    } catch (err) {
+      console.warn('loadProjects error:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [currentProject, userId]);
+  }, [currentProject]);
 
   const selectProject = useCallback((id: string) => {
     const proj = projects.find(p => p.id === id) ?? null;
@@ -68,47 +72,54 @@ export function ProjectProvider({ children, userId = 'anonymous' }: ProjectProvi
   }, [projects]);
 
   const createProject = useCallback(async (name: string, vesselNo: string): Promise<Project> => {
-    const proj = createNewProject(name, vesselNo, userId);
-    await saveProject(proj);
+    const proj = await createProjectAPI(name, vesselNo);
     setProjects(prev => [proj, ...prev]);
     setCurrentProject(proj);
     return proj;
-  }, [userId]);
+  }, []);
 
   const removeProject = useCallback(async (id: string) => {
-    await deleteProject(id);
+    await deleteProjectAPI(id);
     setProjects(prev => prev.filter(p => p.id !== id));
     if (currentProject?.id === id) setCurrentProject(null);
   }, [currentProject]);
 
-  const updateCables = useCallback(async (cables: CableData[], description = '케이블 데이터 업데이트') => {
-    if (!currentProject) return;
-    const updated = await updateProjectData(currentProject.id, cables, currentProject.nodes, 'cable_edit', description);
+  /** 내부 헬퍼: D1에 저장 + state 업데이트 */
+  const _persist = useCallback(async (
+    proj: Project,
+    cables: CableData[],
+    nodes: NodeData[],
+    action: HistoryEntry['action'],
+    description: string,
+  ): Promise<Project> => {
+    const entry = makeHistoryEntry(action, description, cables, nodes);
+    const history = [entry, ...proj.history].slice(0, 200);
+    const { updatedAt } = await updateProjectAPI(proj.id, cables, nodes, history);
+    const updated: Project = { ...proj, cables, nodes, history, updatedAt };
     setCurrentProject(updated);
     setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-  }, [currentProject]);
+    return updated;
+  }, []);
+
+  const updateCables = useCallback(async (cables: CableData[], description = '케이블 데이터 업데이트') => {
+    if (!currentProject) return;
+    await _persist(currentProject, cables, currentProject.nodes, 'cable_edit', description);
+  }, [currentProject, _persist]);
 
   const updateNodes = useCallback(async (nodes: NodeData[], description = '노드 데이터 업데이트') => {
     if (!currentProject) return;
-    const updated = await updateProjectData(currentProject.id, currentProject.cables, nodes, 'cable_edit', description);
-    setCurrentProject(updated);
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-  }, [currentProject]);
+    await _persist(currentProject, currentProject.cables, nodes, 'cable_edit', description);
+  }, [currentProject, _persist]);
 
   const updateCablesAndNodes = useCallback(async (cables: CableData[], nodes: NodeData[], description = '파일 업로드') => {
     if (!currentProject) return;
-    const updated = await updateProjectData(currentProject.id, cables, nodes, 'file_upload', description);
-    setCurrentProject(updated);
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-  }, [currentProject]);
+    await _persist(currentProject, cables, nodes, 'file_upload', description);
+  }, [currentProject, _persist]);
 
   const saveCurrentProject = useCallback(async () => {
     if (!currentProject) return;
-    const updated = addHistory(currentProject, 'manual_save', '수동 저장');
-    await saveProject(updated);
-    setCurrentProject(updated);
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-  }, [currentProject]);
+    await _persist(currentProject, currentProject.cables, currentProject.nodes, 'manual_save', '수동 저장');
+  }, [currentProject, _persist]);
 
   const clearCurrentProject = useCallback(() => {
     setCurrentProject(null);

@@ -1,0 +1,8 @@
+name = "scms-v1"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding = "scms_db"
+database_name = "scms-db"
+database_id = "a127446b-4bdf-400e-bab7-34f1ba75f146"

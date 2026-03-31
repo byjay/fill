@@ -1166,16 +1166,16 @@ const AppRouter: React.FC = () => {
     }
   }, [currentProjectId, screen]);
 
-  const handleLogin = useCallback((userInfo?: { name: string; email: string; provider: string }) => {
+  const handleLogin = useCallback((userInfo?: { name: string; email: string; provider: string; uid?: string }) => {
+    // Firebase uid를 우선 사용 (D1 API 인증 키로 활용)
     const info: UserInfo = {
-      id: userInfo?.email || `${userInfo?.provider || 'demo'}_${Date.now()}`,
+      id: userInfo?.uid || userInfo?.email || `${userInfo?.provider || 'demo'}_${Date.now()}`,
       name: userInfo?.name || 'SEASTAR 사용자',
       email: userInfo?.email || '',
       provider: userInfo?.provider || 'demo',
     };
     setUser(info);
     saveSession(info);
-    // ProjectProvider의 userId 업데이트
     window.dispatchEvent(new CustomEvent('scms_user_changed', { detail: info.id }));
     setScreen('projects');
   }, []);

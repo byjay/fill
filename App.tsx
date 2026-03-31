@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { CableData, NodeData } from './types';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
@@ -27,6 +27,12 @@ import {
   Package,
   Menu,
   X,
+  Undo2,
+  Redo2,
+  LogOut,
+  ArrowUpDown,
+  FileJson,
+  FolderOpen,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,6 +41,13 @@ import {
 
 type AppScreen = 'login' | 'projects' | 'main';
 type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'history';
+
+interface Snapshot {
+  cables: CableData[];
+  nodes: NodeData[];
+}
+
+const MAX_UNDO = 50;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Excel column maps (moved here so Sidebar can use project context)
@@ -156,6 +169,8 @@ interface ProjectSidebarProps {
   onExportAllData: () => void;
   onExportCableList: () => void;
   onExportNodeInfo: () => void;
+  onJsonSave: () => void;
+  onJsonLoad: (cables: CableData[], nodes: NodeData[]) => void;
   collapsed: boolean;
   onToggle: () => void;
 }
@@ -165,6 +180,8 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onExportAllData,
   onExportCableList,
   onExportNodeInfo,
+  onJsonSave,
+  onJsonLoad,
   collapsed,
   onToggle,
 }) => {
@@ -175,6 +192,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   const cableFileRef = useRef<HTMLInputElement>(null);
   const nodeFileRef = useRef<HTMLInputElement>(null);
   const bothFileRef = useRef<HTMLInputElement>(null);
+  const jsonLoadRef = useRef<HTMLInputElement>(null);
 
   const readExcelFile = (file: File): Promise<unknown[][]> => {
     return new Promise((resolve) => {
@@ -235,6 +253,24 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
     e.target.value = '';
   };
 
+  const handleJsonLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const json = JSON.parse(evt.target?.result as string);
+        const loadedCables: CableData[] = Array.isArray(json.cables) ? json.cables : [];
+        const loadedNodes: NodeData[] = Array.isArray(json.nodes) ? json.nodes : [];
+        onJsonLoad(loadedCables, loadedNodes);
+      } catch {
+        alert('JSON 파일을 파싱할 수 없습니다. 올바른 형식인지 확인하세요.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const totalLength = cables.reduce((sum, c) => sum + (c.calculatedLength || c.length || 0), 0);
   const calculatedPaths = cables.filter(c => c.calculatedPath).length;
 
@@ -276,9 +312,24 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
         >
           <Download size={14} />
         </button>
+        <button
+          onClick={onJsonSave}
+          className="p-1.5 text-slate-400 hover:text-yellow-400 hover:bg-slate-700 rounded transition-colors"
+          title="JSON 저장"
+        >
+          <FileJson size={14} />
+        </button>
+        <button
+          onClick={() => jsonLoadRef.current?.click()}
+          className="p-1.5 text-slate-400 hover:text-yellow-400 hover:bg-slate-700 rounded transition-colors"
+          title="JSON 로드"
+        >
+          <FolderOpen size={14} />
+        </button>
         <input type="file" ref={cableFileRef} onChange={handleCableFileUpload} accept=".xlsx,.xls,.csv" className="hidden" />
         <input type="file" ref={nodeFileRef} onChange={handleNodeFileUpload} accept=".xlsx,.xls,.csv" className="hidden" />
         <input type="file" ref={bothFileRef} onChange={handleBothFileUpload} accept=".xlsx,.xls" className="hidden" />
+        <input type="file" ref={jsonLoadRef} onChange={handleJsonLoadFile} accept=".json" className="hidden" />
       </aside>
     );
   }
@@ -332,6 +383,34 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
               통합 Excel 업로드...
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* JSON Save / Load */}
+      <div className="mx-3 bg-slate-800 rounded-lg p-3 border border-slate-700">
+        <h3 className="text-yellow-400 font-bold mb-2 flex items-center gap-1.5 text-xs">
+          <FileJson size={13} /> JSON 저장 / 로드
+        </h3>
+        <div className="space-y-1.5">
+          <button
+            onClick={onJsonSave}
+            className="w-full flex items-center justify-center gap-1.5 bg-yellow-700/40 hover:bg-yellow-700/60 border border-yellow-600/30 text-yellow-300 text-xs font-bold py-1.5 px-2 rounded transition-colors"
+          >
+            <Download size={12} /> JSON 저장
+          </button>
+          <input
+            type="file"
+            ref={jsonLoadRef}
+            onChange={handleJsonLoadFile}
+            accept=".json"
+            className="hidden"
+          />
+          <button
+            onClick={() => jsonLoadRef.current?.click()}
+            className="w-full flex items-center justify-center gap-1.5 bg-yellow-700/40 hover:bg-yellow-700/60 border border-yellow-600/30 text-yellow-300 text-xs font-bold py-1.5 px-2 rounded transition-colors"
+          >
+            <FolderOpen size={12} /> JSON 로드
+          </button>
         </div>
       </div>
 
@@ -484,16 +563,66 @@ const TABS = [
 
 interface MainAppProps {
   onBackToProjects: () => void;
+  onLogout: () => void;
 }
 
-const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
-  const { currentProject, updateCables, clearCurrentProject } = useProject();
+const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout }) => {
+  const { currentProject, projects, selectProject, updateCables, updateCablesAndNodes, clearCurrentProject } = useProject();
   const cables = currentProject?.cables ?? [];
   const nodes = currentProject?.nodes ?? [];
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // ── Undo / Redo stacks ─────────────────────────────────────────────────────
+  const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
+
+  // ── Project switcher dropdown ──────────────────────────────────────────────
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  // Helper: push snapshot before a mutating cables/nodes update
+  const pushUndo = useCallback((prevCables: CableData[], prevNodes: NodeData[]) => {
+    setUndoStack(prev => {
+      const next = [...prev, { cables: prevCables, nodes: prevNodes }];
+      return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
+    });
+    setRedoStack([]);
+  }, []);
+
+  // ── Undo action ────────────────────────────────────────────────────────────
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+    const snapshot = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, prev.length - 1));
+    setRedoStack(prev => [{ cables, nodes }, ...prev]);
+    await updateCablesAndNodes(snapshot.cables, snapshot.nodes, 'Undo');
+  }, [undoStack, cables, nodes, updateCablesAndNodes]);
+
+  // ── Redo action ────────────────────────────────────────────────────────────
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const snapshot = redoStack[0];
+    setRedoStack(prev => prev.slice(1));
+    setUndoStack(prev => [...prev, { cables, nodes }]);
+    await updateCablesAndNodes(snapshot.cables, snapshot.nodes, 'Redo');
+  }, [redoStack, cables, nodes, updateCablesAndNodes]);
+
+  // ── Keyboard shortcuts Ctrl+Z / Ctrl+Y ────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleUndo, handleRedo]);
 
   // ── Dijkstra path calculation ──────────────────────────────────────────────
 
@@ -615,6 +744,7 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
       alert('노드 데이터를 먼저 로드하세요.');
       return;
     }
+    pushUndo(cables, nodes);
     const newData = cables.map(cable => {
       if (cable.fromNode && cable.toNode) {
         const result = calculatePath(cable.fromNode, cable.toNode, cable.checkNode);
@@ -629,10 +759,11 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
       return cable;
     });
     await updateCables(newData, '전체 경로 계산');
-  }, [cables, nodes, calculatePath, updateCables]);
+  }, [cables, nodes, calculatePath, updateCables, pushUndo]);
 
   const handleRecalculateSelected = useCallback(
     async (indices: number[]) => {
+      pushUndo(cables, nodes);
       const newData = [...cables];
       indices.forEach(index => {
         const cable = newData[index];
@@ -649,11 +780,12 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
       });
       await updateCables(newData, '선택 케이블 경로 재계산');
     },
-    [cables, calculatePath, updateCables]
+    [cables, nodes, calculatePath, updateCables, pushUndo]
   );
 
   const handleUpdateCheckNode = useCallback(
     async (index: number, checkNode: string) => {
+      pushUndo(cables, nodes);
       const newData = [...cables];
       newData[index] = { ...newData[index], checkNode };
       const cable = newData[index];
@@ -667,8 +799,27 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
       }
       await updateCables(newData, '경유지 노드 업데이트');
     },
-    [cables, calculatePath, updateCables]
+    [cables, nodes, calculatePath, updateCables, pushUndo]
   );
+
+  // ── JSON Save ──────────────────────────────────────────────────────────────
+  const handleJsonSave = useCallback(() => {
+    const blob = new Blob([JSON.stringify({ cables, nodes }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `seastar_${currentProject?.vesselNo || 'project'}_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [cables, nodes, currentProject]);
+
+  // ── JSON Load ─────────────────────────────────────────────────────────────
+  const handleJsonLoad = useCallback(async (loadedCables: CableData[], loadedNodes: NodeData[]) => {
+    pushUndo(cables, nodes);
+    await updateCablesAndNodes(loadedCables, loadedNodes, 'JSON 파일 로드');
+  }, [cables, nodes, updateCablesAndNodes, pushUndo]);
 
   const handleExportAllData = useCallback(() => {
     const data = {
@@ -748,7 +899,7 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
         className="bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between shrink-0 shadow-md z-30"
         style={{ height: 42 }}
       >
-        {/* Left: logo + project info */}
+        {/* Left: logo + project info + project switcher */}
         <div className="flex items-center gap-2 min-w-0">
           <img src="/logo.jpg" alt="SEASTAR" className="h-6 object-contain shrink-0" />
           <div className="h-4 w-px bg-slate-700 shrink-0" />
@@ -762,6 +913,48 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
                   {currentProject.vesselNo}
                 </span>
               )}
+              {/* Project switcher button */}
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setSwitcherOpen(v => !v)}
+                  className="flex items-center gap-1 text-[9px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-1.5 py-0.5 rounded transition-colors"
+                  title="프로젝트 전환"
+                >
+                  <ArrowUpDown size={10} />
+                  <span>전환</span>
+                </button>
+                {switcherOpen && (
+                  <div className="absolute left-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl py-1 min-w-[200px] z-50">
+                    <div className="px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-700 mb-1">
+                      프로젝트 선택
+                    </div>
+                    {projects.map(proj => (
+                      <button
+                        key={proj.id}
+                        onClick={() => {
+                          selectProject(proj.id);
+                          setSwitcherOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold transition-colors text-left ${
+                          proj.id === currentProject?.id
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span className="truncate flex-1">{proj.name}</span>
+                        {proj.vesselNo && (
+                          <span className="text-[9px] text-blue-300 bg-blue-900/50 px-1 py-0.5 rounded shrink-0">
+                            {proj.vesselNo}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    {projects.length === 0 && (
+                      <div className="px-3 py-2 text-[11px] text-slate-500">프로젝트 없음</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -798,8 +991,32 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
           )}
         </div>
 
-        {/* Right: stats + back button */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Right: undo/redo + stats + back + logout */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Undo button */}
+          <button
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="실행 취소 (Ctrl+Z)"
+          >
+            <Undo2 size={11} />
+            <span className="hidden sm:inline">Undo ({undoStack.length})</span>
+          </button>
+          {/* Redo button */}
+          <button
+            onClick={handleRedo}
+            disabled={redoStack.length === 0}
+            className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="다시 실행 (Ctrl+Y)"
+          >
+            <Redo2 size={11} />
+            <span className="hidden sm:inline">Redo ({redoStack.length})</span>
+          </button>
+
+          <div className="h-4 w-px bg-slate-700 mx-0.5 shrink-0" />
+
+          {/* Stats */}
           <div className="flex items-center gap-2 text-[10px] text-slate-500">
             <span className="text-blue-400 font-bold">{cables.length}</span>
             <span>cables</span>
@@ -807,12 +1024,27 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
             <span className="text-blue-400 font-bold">{nodes.length}</span>
             <span>nodes</span>
           </div>
+
+          <div className="h-4 w-px bg-slate-700 mx-0.5 shrink-0" />
+
+          {/* Back to projects */}
           <button
             onClick={() => { clearCurrentProject(); onBackToProjects(); }}
             className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition-colors"
+            title="프로젝트 목록으로"
           >
             <ArrowLeft size={11} />
             <span className="hidden sm:inline">프로젝트</span>
+          </button>
+
+          {/* Logout */}
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1 text-[10px] font-bold text-red-400 hover:text-white bg-slate-800 hover:bg-red-700 border border-slate-700 hover:border-red-600 px-2 py-1 rounded transition-colors"
+            title="로그아웃"
+          >
+            <LogOut size={11} />
+            <span className="hidden sm:inline">로그아웃</span>
           </button>
         </div>
       </header>
@@ -825,6 +1057,8 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
           onExportAllData={handleExportAllData}
           onExportCableList={handleExportCableList}
           onExportNodeInfo={handleExportNodeInfo}
+          onJsonSave={handleJsonSave}
+          onJsonLoad={handleJsonLoad}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(v => !v)}
         />
@@ -866,11 +1100,17 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
         </main>
       </div>
 
-      {/* Click-outside overlay for dropdown menu */}
+      {/* Click-outside overlays for dropdown menus */}
       {menuOpen && (
         <div
           className="fixed inset-0 z-40"
           onClick={() => setMenuOpen(false)}
+        />
+      )}
+      {switcherOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setSwitcherOpen(false)}
         />
       )}
     </div>
@@ -882,7 +1122,7 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AppRouter: React.FC = () => {
-  const { currentProject } = useProject();
+  const { currentProject, clearCurrentProject } = useProject();
   const currentProjectId = currentProject?.id ?? null;
   const [screen, setScreen] = useState<AppScreen>('login');
 
@@ -900,6 +1140,11 @@ const AppRouter: React.FC = () => {
     }
   }, [currentProjectId, screen]);
 
+  const handleLogout = useCallback(() => {
+    clearCurrentProject();
+    setScreen('login');
+  }, [clearCurrentProject]);
+
   if (screen === 'login') {
     return <LoginScreen onLogin={() => setScreen('projects')} />;
   }
@@ -912,6 +1157,7 @@ const AppRouter: React.FC = () => {
   return (
     <MainApp
       onBackToProjects={() => setScreen('projects')}
+      onLogout={handleLogout}
     />
   );
 };

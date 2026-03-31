@@ -11,7 +11,8 @@
       "Bash(npm install:*)",
       "Bash(echo 'not directly in root' find E:code-projectcalbleSCMS_V1node_modulesthree-stdlib -name OrbitControls*)",
       "Bash(npx tsc:*)",
-      "Bash(CLOUDFLARE_API_TOKEN=v7zolsDGTztwrP6nO3c731ZVzz6qeZd-tMEEUB7g CLOUDFLARE_ACCOUNT_ID=65a3e734c27681a2734f87c0c5721ccb npx wrangler pages deploy dist --project-name=fill --commit-dirty=true --commit-message=\"SEASTAR PRO v2.7 - project mgmt, BOM, 3D node map\")"
+      "Bash(CLOUDFLARE_API_TOKEN=v7zolsDGTztwrP6nO3c731ZVzz6qeZd-tMEEUB7g CLOUDFLARE_ACCOUNT_ID=65a3e734c27681a2734f87c0c5721ccb npx wrangler pages deploy dist --project-name=fill --commit-dirty=true --commit-message=\"SEASTAR PRO v2.7 - project mgmt, BOM, 3D node map\")",
+      "Bash(node -e \"const fs = require\\(''fs''\\); const src = fs.readFileSync\\(''components/ThreeDViewTab.tsx'',''utf8''\\); console.log\\(''Lines:'', src.split\\(''\\\\n''\\).length\\); console.log\\(''Has CameraPreset type:'', src.includes\\(''type CameraPreset''\\)\\); console.log\\(''Has FireLine:'', src.includes\\(''FireLine''\\)\\); console.log\\(''Has AutoRotateBtn:'', src.includes\\(''AutoRotateBtn''\\)\\); console.log\\(''Has PresetBtn:'', src.includes\\(''PresetBtn''\\)\\); console.log\\(''Has pathCount:'', src.includes\\(''pathCount''\\)\\); console.log\\(''Has firePathNodes:'', src.includes\\(''firePathNodes''\\)\\); console.log\\(''Has onPresetApplied:'', src.includes\\(''onPresetApplied''\\)\\); console.log\\(''Has effectiveAutoRotate:'', src.includes\\(''effectiveAutoRotate''\\)\\);\")"
     ]
   }
 }

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { CableData } from '../types';
 import { Download } from 'lucide-react';
 
@@ -122,6 +123,69 @@ export default function BOMTab({ cableData }: BOMTabProps) {
     a.click();
   };
 
+  const exportToExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // ── Sheet 1: PIVOT ────────────────────────────────────────────────────
+    const pivotHeaders = [
+      'No', 'Cable Type',
+      ...systems.flatMap(s => [`${getSysAbbr(s)} Length`, `${getSysAbbr(s)} Weight`]),
+      'S Length', 'S Weight', 'Total Length', 'Total Weight',
+    ];
+    const pivotRows: (string | number)[][] = [pivotHeaders];
+    typeSummary.forEach((row, i) => {
+      const cells: (string | number)[] = [i + 1, row.type];
+      systems.forEach(s => {
+        const c = pivot[row.type]?.[s];
+        cells.push(c ? parseFloat(c.len.toFixed(0)) : '');
+        cells.push(c ? parseFloat(c.wgt.toFixed(0)) : '');
+      });
+      cells.push(parseFloat(row.len.toFixed(0)), parseFloat(row.wgt.toFixed(0)));
+      cells.push(parseFloat(row.len.toFixed(0)), parseFloat(row.wgt.toFixed(0)));
+      pivotRows.push(cells);
+    });
+    // Grand total
+    const totalCells: (string | number)[] = [0, 'Total'];
+    systems.forEach(s => {
+      const sysTotLen = typeSummary.reduce((acc, row) => acc + (pivot[row.type]?.[s]?.len || 0), 0);
+      const sysTotWgt = typeSummary.reduce((acc, row) => acc + (pivot[row.type]?.[s]?.wgt || 0), 0);
+      totalCells.push(parseFloat(sysTotLen.toFixed(0)), parseFloat(sysTotWgt.toFixed(0)));
+    });
+    totalCells.push(
+      parseFloat(grandTotals.len.toFixed(0)), parseFloat(grandTotals.wgt.toFixed(0)),
+      parseFloat(grandTotals.len.toFixed(0)), parseFloat(grandTotals.wgt.toFixed(0)),
+    );
+    pivotRows.push(totalCells);
+    const wsPivot = XLSX.utils.aoa_to_sheet(pivotRows);
+    XLSX.utils.book_append_sheet(wb, wsPivot, 'PIVOT');
+
+    // ── Sheet 2: BY_TYPE ──────────────────────────────────────────────────
+    const typeRows: (string | number)[][] = [
+      ['No', 'Cable Type', 'Qty', 'Total Length (m)', 'Total Weight'],
+    ];
+    typeSummary.forEach((row, i) => {
+      typeRows.push([i + 1, row.type, row.qty, parseFloat(row.len.toFixed(1)), row.wgt > 0 ? parseFloat(row.wgt.toFixed(0)) : 0]);
+    });
+    typeRows.push(['-', 'Total', grandTotals.qty, parseFloat(grandTotals.len.toFixed(1)), grandTotals.wgt > 0 ? parseFloat(grandTotals.wgt.toFixed(0)) : 0]);
+    const wsByType = XLSX.utils.aoa_to_sheet(typeRows);
+    XLSX.utils.book_append_sheet(wb, wsByType, 'BY_TYPE');
+
+    // ── Sheet 3: BY_SYSTEM ────────────────────────────────────────────────
+    const sysRows2: (string | number)[][] = [
+      ['No', 'System', 'Cables', 'Total Length (m)', 'Total Weight'],
+    ];
+    systems.forEach((s, i) => {
+      const cables = cableData.filter(c => c.system === s);
+      const len = cables.reduce((acc, c) => acc + ((c.calculatedLength || c.length || 0) * (1 + marginPct / 100)), 0);
+      const wgt = cables.reduce((acc, c) => acc + (c.porWeight || 0), 0);
+      sysRows2.push([i + 1, s, cables.length, parseFloat(len.toFixed(1)), wgt > 0 ? parseFloat(wgt.toFixed(0)) : 0]);
+    });
+    const wsBySystem = XLSX.utils.aoa_to_sheet(sysRows2);
+    XLSX.utils.book_append_sheet(wb, wsBySystem, 'BY_SYSTEM');
+
+    XLSX.writeFile(wb, 'BOM.xlsx');
+  };
+
   if (cableData.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-slate-500 bg-slate-900">
@@ -163,6 +227,9 @@ export default function BOMTab({ cableData }: BOMTabProps) {
           <span className="text-[10px] text-slate-500">{cableData.length} cables · {types.length} types · {systems.length} systems</span>
           <button onClick={exportCSV} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded transition-colors">
             <Download size={12} /> CSV
+          </button>
+          <button onClick={exportToExcel} className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-[11px] font-bold px-3 py-1.5 rounded transition-colors">
+            <Download size={12} /> Excel
           </button>
         </div>
       </div>

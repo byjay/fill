@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
+  RotateCw,
 } from 'lucide-react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
@@ -28,6 +29,8 @@ interface NodePosition {
   node: NodeData;
   position: THREE.Vector3;
 }
+
+type CameraPreset = 'iso' | 'top' | 'side' | 'front' | null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color helpers
@@ -75,14 +78,12 @@ function getNodeColorForLegend(label: string): string {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-layout: force-directed using relation field, with deck-based Y separation
-// Nodes without coords are positioned via a simplified spring/repulsion layout.
 // ─────────────────────────────────────────────────────────────────────────────
 function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
   const positions: Record<string, THREE.Vector3> = {};
 
   if (nodeData.length === 0) return positions;
 
-  // If ALL nodes have explicit x/y/z coords, use them directly (scaled for comfort)
   const hasCoords = nodeData.every(
     (n) => n.x !== undefined && n.y !== undefined && n.z !== undefined,
   );
@@ -97,7 +98,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
     return positions;
   }
 
-  // Build adjacency from relation field
   const adjacency: Record<string, string[]> = {};
   nodeData.forEach((node) => {
     const neighbors = node.relation
@@ -109,7 +109,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
     adjacency[node.name] = neighbors;
   });
 
-  // Group nodes by deck for hierarchical Y layout
   const deckMap: Record<string, NodeData[]> = {};
   nodeData.forEach((node) => {
     const deck = node.deck ?? 'default';
@@ -122,7 +121,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
     deckYMap[deck] = i * 14;
   });
 
-  // Initialize positions: circle per deck in XZ plane
   nodeData.forEach((node) => {
     const deck = node.deck ?? 'default';
     const deckNodes = deckMap[deck];
@@ -138,12 +136,11 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
     );
   });
 
-  // Force-directed iterations (simplified Fruchterman-Reingold in XZ plane only)
   const ITERATIONS = 80;
-  const IDEAL_LENGTH = 8;          // ideal spring rest length
-  const REPULSION = 200;           // repulsion constant
-  const ATTRACTION = 0.05;         // spring attraction constant
-  const MAX_DISP = 3;              // max displacement per iteration
+  const IDEAL_LENGTH = 8;
+  const REPULSION = 200;
+  const ATTRACTION = 0.05;
+  const MAX_DISP = 3;
 
   const nodeNames = nodeData.map((n) => n.name);
 
@@ -153,7 +150,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
       disp[name] = { dx: 0, dz: 0 };
     });
 
-    // Repulsion between all pairs
     for (let i = 0; i < nodeNames.length; i++) {
       for (let j = i + 1; j < nodeNames.length; j++) {
         const a = nodeNames[i];
@@ -175,7 +171,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
       }
     }
 
-    // Attraction along edges (relation links)
     nodeNames.forEach((name) => {
       const neighbors = adjacency[name] ?? [];
       const pa = positions[name];
@@ -192,7 +187,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
       });
     });
 
-    // Apply displacement (clamped, preserve deck Y)
     nodeNames.forEach((name) => {
       const pos = positions[name];
       if (!pos) return;
@@ -204,7 +198,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
       }
       pos.x += d.dx;
       pos.z += d.dz;
-      // Y is locked to deck level — do not change
     });
   }
 
@@ -213,8 +206,6 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cable path parser
-// calculatedPath is comma-separated node names.
-// Also supports ' → ' arrow notation.
 // ─────────────────────────────────────────────────────────────────────────────
 function parseCablePath(cable: CableData): string[] {
   const raw = cable.calculatedPath || cable.path || '';
@@ -225,7 +216,7 @@ function parseCablePath(cable: CableData): string[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Camera reset helper component
+// Camera controller — handles reset, presets, and auto-rotate
 // ─────────────────────────────────────────────────────────────────────────────
 interface CameraControllerProps {
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
@@ -233,6 +224,8 @@ interface CameraControllerProps {
   autoRotate: boolean;
   center: THREE.Vector3;
   distance: number;
+  cameraPreset: CameraPreset;
+  onPresetApplied: () => void;
 }
 
 const CameraController: React.FC<CameraControllerProps> = ({
@@ -241,9 +234,12 @@ const CameraController: React.FC<CameraControllerProps> = ({
   autoRotate,
   center,
   distance,
+  cameraPreset,
+  onPresetApplied,
 }) => {
   const { camera } = useThree();
   const prevResetSignal = useRef(resetSignal);
+  const prevPreset = useRef<CameraPreset>(null);
 
   useFrame(() => {
     if (controlsRef.current) {
@@ -267,16 +263,58 @@ const CameraController: React.FC<CameraControllerProps> = ({
     }
   }, [resetSignal, camera, center, distance, controlsRef]);
 
+  useEffect(() => {
+    if (cameraPreset && cameraPreset !== prevPreset.current) {
+      prevPreset.current = cameraPreset;
+
+      let px = center.x;
+      let py = center.y;
+      let pz = center.z;
+
+      switch (cameraPreset) {
+        case 'iso':
+          px = center.x + distance;
+          py = center.y + distance;
+          pz = center.z + distance;
+          break;
+        case 'top':
+          px = center.x;
+          py = center.y + distance * 1.5;
+          pz = center.z;
+          break;
+        case 'side':
+          px = center.x + distance * 1.5;
+          py = center.y;
+          pz = center.z;
+          break;
+        case 'front':
+          px = center.x;
+          py = center.y;
+          pz = center.z + distance * 1.5;
+          break;
+      }
+
+      camera.position.set(px, py, pz);
+      camera.lookAt(center);
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(center);
+        controlsRef.current.update();
+      }
+      onPresetApplied();
+    }
+  }, [cameraPreset, camera, center, distance, controlsRef, onPresetApplied]);
+
   return null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Node sphere mesh
+// Node sphere mesh — with fire-path animation support
 // ─────────────────────────────────────────────────────────────────────────────
 interface NodeSphereProps {
   nodePos: NodePosition;
   isSelected: boolean;
   isHighlighted: boolean;
+  isFirePath: boolean;
   connectedCableCount: number;
   showLabel: boolean;
   onClick: (name: string) => void;
@@ -286,19 +324,46 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
   nodePos,
   isSelected,
   isHighlighted,
+  isFirePath,
   connectedCableCount,
   showLabel,
   onClick,
 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
+  const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const baseColor = getNodeColor(nodePos.node);
   const size = Math.max(0.4, Math.min(1.2, 0.4 + connectedCableCount * 0.08));
 
   const color = isSelected ? '#ffffff' : isHighlighted ? '#fbbf24' : baseColor;
 
-  useFrame((_, delta) => {
-    if (meshRef.current && (isSelected || isHighlighted)) {
-      meshRef.current.rotation.y += delta * 1.5;
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+
+    if (isFirePath) {
+      // Scale pulse: 1.0 → 1.4
+      const scaleFactor = 1.0 + 0.2 * (Math.sin(t * 3) * 0.5 + 0.5);
+      if (meshRef.current) {
+        meshRef.current.scale.setScalar(scaleFactor);
+      }
+      // Color shift: red (#ff4444) → orange (#ff8800)
+      const s = Math.sin(t * 3) * 0.5 + 0.5; // 0..1
+      const r = 1.0;
+      const g = 0.267 + (0.533 - 0.267) * s; // ~0.267 to 0.533
+      const b = 0.267 * (1 - s);
+      if (matRef.current) {
+        matRef.current.color.setRGB(r, g, b);
+        matRef.current.emissive.setRGB(r * 0.5, g * 0.3, b * 0.1);
+        matRef.current.emissiveIntensity = 0.3 + 0.7 * s;
+      }
+      // Glow ring scale
+      if (glowRef.current) {
+        glowRef.current.scale.setScalar(scaleFactor * 1.1);
+      }
+    } else if (isSelected || isHighlighted) {
+      if (meshRef.current) {
+        meshRef.current.rotation.y += 1.5 * (1 / 60);
+      }
     }
   });
 
@@ -320,22 +385,25 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
       >
         <sphereGeometry args={[size, 16, 16]} />
         <meshStandardMaterial
-          color={color}
-          emissive={isSelected || isHighlighted ? color : '#000000'}
-          emissiveIntensity={isSelected ? 0.6 : isHighlighted ? 0.4 : 0}
+          ref={matRef}
+          color={isFirePath ? '#ff4444' : color}
+          emissive={
+            isFirePath ? '#ff4444' : isSelected || isHighlighted ? color : '#000000'
+          }
+          emissiveIntensity={isFirePath ? 0.6 : isSelected ? 0.6 : isHighlighted ? 0.4 : 0}
           roughness={0.3}
           metalness={0.4}
         />
       </mesh>
 
-      {/* Glow ring for selected/highlighted */}
-      {(isSelected || isHighlighted) && (
-        <mesh>
+      {/* Glow ring for selected / highlighted / fire-path */}
+      {(isSelected || isHighlighted || isFirePath) && (
+        <mesh ref={glowRef}>
           <sphereGeometry args={[size * 1.4, 16, 16]} />
           <meshStandardMaterial
-            color={color}
+            color={isFirePath ? '#ff6600' : color}
             transparent
-            opacity={0.15}
+            opacity={isFirePath ? 0.25 : 0.15}
             side={THREE.BackSide}
           />
         </mesh>
@@ -345,7 +413,15 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
         <Text
           position={[0, size + 0.5, 0]}
           fontSize={0.6}
-          color={isSelected ? '#ffffff' : isHighlighted ? '#fbbf24' : '#cbd5e1'}
+          color={
+            isFirePath
+              ? '#ff8800'
+              : isSelected
+              ? '#ffffff'
+              : isHighlighted
+              ? '#fbbf24'
+              : '#cbd5e1'
+          }
           anchorX="center"
           anchorY="bottom"
           renderOrder={1}
@@ -360,18 +436,23 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cable line — traces actual node connections from calculatedPath
+// Supports fire-path animation mode
 // ─────────────────────────────────────────────────────────────────────────────
 interface CableLineProps {
   cable: CableData;
   positions: Record<string, THREE.Vector3>;
   isHighlighted: boolean;
+  isFirePath: boolean;
 }
 
-const CableLine: React.FC<CableLineProps> = ({ cable, positions, isHighlighted }) => {
+const CableLine: React.FC<CableLineProps> = ({
+  cable,
+  positions,
+  isHighlighted,
+  isFirePath,
+}) => {
   const pathNodes = parseCablePath(cable);
 
-  // Build point array by resolving each node name to its 3D position.
-  // Skip segments where a node has no known position.
   const segments: THREE.Vector3[][] = [];
   let current: THREE.Vector3[] = [];
 
@@ -380,7 +461,6 @@ const CableLine: React.FC<CableLineProps> = ({ cable, positions, isHighlighted }
     if (pos) {
       current.push(pos.clone());
     } else {
-      // Gap in path — end current segment and start a new one
       if (current.length >= 2) segments.push(current);
       current = [];
     }
@@ -388,6 +468,55 @@ const CableLine: React.FC<CableLineProps> = ({ cable, positions, isHighlighted }
   if (current.length >= 2) segments.push(current);
 
   if (segments.length === 0) return null;
+
+  // Animated fire-path line color/opacity driven by time
+  const FireLine: React.FC<{ pts: THREE.Vector3[] }> = ({ pts }) => {
+    const lineRef = useRef<THREE.Line>(null);
+
+    useFrame((state) => {
+      const t = state.clock.elapsedTime;
+      const s = Math.sin(t * 4) * 0.5 + 0.5; // 0..1
+      if (lineRef.current) {
+        const mat = lineRef.current.material as THREE.LineBasicMaterial;
+        if (mat) {
+          // Interpolate red→orange
+          const r = 1.0;
+          const g = 0.267 + (0.533 - 0.267) * s;
+          mat.color.setRGB(r, g, 0);
+          mat.opacity = 0.5 + 0.5 * s;
+        }
+      }
+    });
+
+    return (
+      <primitive
+        object={
+          (() => {
+            const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+            const material = new THREE.LineBasicMaterial({
+              color: new THREE.Color('#ff4444'),
+              transparent: true,
+              opacity: 0.8,
+              linewidth: 3,
+            });
+            const line = new THREE.Line(geometry, material);
+            return line;
+          })()
+        }
+        ref={lineRef}
+      />
+    );
+  };
+
+  if (isFirePath) {
+    return (
+      <>
+        {segments.map((pts, i) => (
+          <FireLine key={i} pts={pts} />
+        ))}
+      </>
+    );
+  }
 
   const color = isHighlighted ? '#fbbf24' : '#10b981';
   const lineWidth = isHighlighted ? 3 : 1;
@@ -427,6 +556,8 @@ interface SceneProps {
   selectedNode: string | null;
   highlightedNodes: Set<string>;
   highlightedCables: Set<string>;
+  firePathNodes: Set<string>;
+  firePathCables: Set<string>;
   showLabels: boolean;
   showNodes: boolean;
   showCables: boolean;
@@ -438,6 +569,8 @@ interface SceneProps {
   resetSignal: number;
   autoRotate: boolean;
   distance: number;
+  cameraPreset: CameraPreset;
+  onPresetApplied: () => void;
 }
 
 const Scene: React.FC<SceneProps> = ({
@@ -446,6 +579,8 @@ const Scene: React.FC<SceneProps> = ({
   selectedNode,
   highlightedNodes,
   highlightedCables,
+  firePathNodes,
+  firePathCables,
   showLabels,
   showNodes,
   showCables,
@@ -457,6 +592,8 @@ const Scene: React.FC<SceneProps> = ({
   resetSignal,
   autoRotate,
   distance,
+  cameraPreset,
+  onPresetApplied,
 }) => (
   <>
     <ambientLight intensity={0.5} />
@@ -471,6 +608,8 @@ const Scene: React.FC<SceneProps> = ({
       autoRotate={autoRotate}
       center={center}
       distance={distance}
+      cameraPreset={cameraPreset}
+      onPresetApplied={onPresetApplied}
     />
 
     <OrbitControls
@@ -492,6 +631,7 @@ const Scene: React.FC<SceneProps> = ({
           cable={cable}
           positions={positions}
           isHighlighted={highlightedCables.has(cable.name)}
+          isFirePath={firePathCables.has(cable.name)}
         />
       ))}
 
@@ -506,6 +646,7 @@ const Scene: React.FC<SceneProps> = ({
             nodePos={{ node, position: pos }}
             isSelected={selectedNode === node.name}
             isHighlighted={highlightedNodes.has(node.name)}
+            isFirePath={firePathNodes.has(node.name)}
             connectedCableCount={cableCounts[node.name] ?? 0}
             showLabel={showLabels}
             onClick={onNodeClick}
@@ -855,6 +996,58 @@ const ToggleBtn: React.FC<ToggleBtnProps> = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Camera preset button
+// ─────────────────────────────────────────────────────────────────────────────
+interface PresetBtnProps {
+  label: string;
+  onClick: () => void;
+}
+
+const PresetBtn: React.FC<PresetBtnProps> = ({ label, onClick }) => (
+  <button
+    onClick={onClick}
+    className="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors border bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white hover:border-slate-500 active:scale-95"
+  >
+    {label}
+  </button>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-rotate toggle button
+// ─────────────────────────────────────────────────────────────────────────────
+interface AutoRotateBtnProps {
+  active: boolean;
+  onToggle: () => void;
+}
+
+const AutoRotateBtn: React.FC<AutoRotateBtnProps> = ({ active, onToggle }) => (
+  <button
+    onClick={onToggle}
+    title={active ? 'Stop auto-rotate' : 'Start auto-rotate'}
+    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+      active
+        ? 'bg-purple-900/60 border-purple-500 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.4)]'
+        : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
+    }`}
+  >
+    <RotateCw size={13} className={active ? 'animate-spin' : ''} style={active ? { animationDuration: '2s' } : {}} />
+    {active ? 'Rotating' : 'Auto-Rotate'}
+  </button>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unique cable paths count helper
+// ─────────────────────────────────────────────────────────────────────────────
+function countUniquePaths(cableData: CableData[]): number {
+  const paths = new Set<string>();
+  cableData.forEach((c) => {
+    const raw = c.calculatedPath || c.path || '';
+    if (raw.trim()) paths.add(raw.trim());
+  });
+  return paths.size;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) => {
@@ -867,6 +1060,7 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
   const [highlightedCables, setHighlightedCables] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState('');
   const [canvasKey, setCanvasKey] = useState(0);
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>(null);
 
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
@@ -887,7 +1081,7 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     return { center: c, distance: d };
   }, [positions]);
 
-  // Cable counts per node (from path, or fallback to fromNode/toNode)
+  // Cable counts per node
   const cableCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     cableData.forEach((c) => {
@@ -919,6 +1113,23 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     return nodes;
   }, [highlightedCables, cableData]);
 
+  // Fire-path: when a cable is highlighted, show fire animation on its path
+  const firePathCables = useMemo(() => {
+    if (highlightedCables.size === 0) return new Set<string>();
+    return new Set(highlightedCables);
+  }, [highlightedCables]);
+
+  const firePathNodes = useMemo(() => {
+    if (highlightedCables.size === 0) return new Set<string>();
+    return new Set(highlightedNodes);
+  }, [highlightedCables, highlightedNodes]);
+
+  // Disable auto-rotate when a path is highlighted (fire path active)
+  const effectiveAutoRotate = autoRotate && highlightedCables.size === 0;
+
+  // Unique path count for stats bar
+  const pathCount = useMemo(() => countUniquePaths(cableData), [cableData]);
+
   const handleNodeClick = useCallback((name: string) => {
     setSelectedNode((prev) => (prev === name ? null : name));
   }, []);
@@ -938,12 +1149,21 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     setCanvasKey((k) => k + 1);
   }, []);
 
+  const handlePreset = useCallback((preset: CameraPreset) => {
+    setCameraPreset(preset);
+  }, []);
+
+  const handlePresetApplied = useCallback(() => {
+    setCameraPreset(null);
+  }, []);
+
   const hasData = nodeData.length > 0;
 
   return (
     <div className="flex flex-col h-full bg-slate-900 text-slate-200 overflow-hidden">
       {/* Top toolbar */}
       <div className="shrink-0 px-4 py-2 bg-slate-800 border-b border-slate-700 flex flex-wrap items-center gap-3">
+        {/* Reset / Clear */}
         <button
           onClick={handleReset}
           title="Reset camera view"
@@ -961,6 +1181,15 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
 
         <div className="w-px h-5 bg-slate-700" />
 
+        {/* Camera presets */}
+        <PresetBtn label="ISO" onClick={() => handlePreset('iso')} />
+        <PresetBtn label="TOP" onClick={() => handlePreset('top')} />
+        <PresetBtn label="SIDE" onClick={() => handlePreset('side')} />
+        <PresetBtn label="FRONT" onClick={() => handlePreset('front')} />
+
+        <div className="w-px h-5 bg-slate-700" />
+
+        {/* Visibility toggles */}
         <ToggleBtn
           active={showNodes}
           onToggle={() => setShowNodes((v) => !v)}
@@ -982,12 +1211,11 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
           inactiveLabel="Labels Off"
           activeColor="text-amber-400"
         />
-        <ToggleBtn
+
+        {/* Auto-rotate with visual active state */}
+        <AutoRotateBtn
           active={autoRotate}
           onToggle={() => setAutoRotate((v) => !v)}
-          activeLabel="Rotating"
-          inactiveLabel="Auto-Rotate"
-          activeColor="text-purple-400"
         />
 
         <div className="w-px h-5 bg-slate-700" />
@@ -998,14 +1226,19 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
           onHighlight={handleHighlightCable}
         />
 
-        {/* Stats */}
-        <div className="ml-auto flex items-center gap-3 text-xs text-slate-500">
-          <span>{nodeData.length} nodes</span>
-          <span className="text-slate-700">|</span>
-          <span>{cableData.length} cables</span>
+        {/* Stats: X Nodes · Y Cables · Z Paths */}
+        <div className="ml-auto flex items-center gap-2 text-xs text-slate-500 font-mono">
+          <span className="text-slate-400 font-bold">{nodeData.length}</span>
+          <span className="text-slate-600">Nodes</span>
+          <span className="text-slate-700">·</span>
+          <span className="text-slate-400 font-bold">{cableData.length}</span>
+          <span className="text-slate-600">Cables</span>
+          <span className="text-slate-700">·</span>
+          <span className="text-slate-400 font-bold">{pathCount}</span>
+          <span className="text-slate-600">Paths</span>
           {selectedNode && (
             <>
-              <span className="text-slate-700">|</span>
+              <span className="text-slate-700 mx-1">|</span>
               <span className="text-blue-400">Selected: {selectedNode}</span>
               <button
                 onClick={() => setSelectedNode(null)}
@@ -1013,6 +1246,15 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
               >
                 <X size={12} />
               </button>
+            </>
+          )}
+          {highlightedCables.size > 0 && (
+            <>
+              <span className="text-slate-700 mx-1">|</span>
+              <span className="text-orange-400 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                Fire Path
+              </span>
             </>
           )}
         </div>
@@ -1060,6 +1302,8 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
                   selectedNode={selectedNode}
                   highlightedNodes={highlightedNodes}
                   highlightedCables={highlightedCables}
+                  firePathNodes={firePathNodes}
+                  firePathCables={firePathCables}
                   showLabels={showLabels}
                   showNodes={showNodes}
                   showCables={showCables}
@@ -1069,8 +1313,10 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
                   onNodeClick={handleNodeClick}
                   controlsRef={controlsRef}
                   resetSignal={resetSignal}
-                  autoRotate={autoRotate}
+                  autoRotate={effectiveAutoRotate}
                   distance={distance}
+                  cameraPreset={cameraPreset}
+                  onPresetApplied={handlePresetApplied}
                 />
               </Canvas>
             </Suspense>

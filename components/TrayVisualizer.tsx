@@ -86,8 +86,9 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
 
   const TRAY_WIDTH = systemResult.systemWidth;
   const TRAY_HEIGHT = systemResult.maxHeightPerTier;
-  // TIER_PITCH: 단수 간격 = 단높이(120mm 기준) + 라벨/여유 공간
-  const TIER_PITCH = Math.max(TRAY_HEIGHT + 80, 200);
+  // TIER_PITCH: 단 간격 = 120mm 고정 (사용자 지정)
+  // SVG 스케일: 1mm = 1px 기준, 단 간격 120px
+  const TIER_PITCH = 120;
   const TIER_COUNT = systemResult.tiers.length;
 
   const POST_WIDTH = 25;
@@ -107,7 +108,8 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
   const X_POST_RIGHT_START = X_TRAY_END;
 
   const getTierY = (tierIndex: number) => {
-      return STRUCTURE_HEIGHT - 80 - (tierIndex * TIER_PITCH);
+      // 단 바닥 Y 좌표: 하단부터 쌓아 올림, 단 간격 TIER_PITCH(120)
+      return STRUCTURE_HEIGHT - MARGIN_TOP - (tierIndex * TIER_PITCH);
   };
 
   const handleCableClick = (id: string) => {

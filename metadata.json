@@ -1,0 +1,5 @@
+{
+  "name": "fill tray ",
+  "description": "Calculates the minimum required cable tray width based on cable ODs, stacking height limits (60mm), and margin requirements.",
+  "requestFramePermissions": []
+}

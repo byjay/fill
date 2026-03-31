@@ -86,7 +86,8 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
 
   const TRAY_WIDTH = systemResult.systemWidth;
   const TRAY_HEIGHT = systemResult.maxHeightPerTier;
-  const TIER_PITCH = 250; 
+  // TIER_PITCH: 단수 간격 = 단높이(120mm 기준) + 라벨/여유 공간
+  const TIER_PITCH = Math.max(TRAY_HEIGHT + 80, 200);
   const TIER_COUNT = systemResult.tiers.length;
 
   const POST_WIDTH = 25;

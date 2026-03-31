@@ -10,7 +10,8 @@
       "Bash(npx wrangler:*)",
       "Bash(npm install:*)",
       "Bash(echo 'not directly in root' find E:code-projectcalbleSCMS_V1node_modulesthree-stdlib -name OrbitControls*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(CLOUDFLARE_API_TOKEN=v7zolsDGTztwrP6nO3c731ZVzz6qeZd-tMEEUB7g CLOUDFLARE_ACCOUNT_ID=65a3e734c27681a2734f87c0c5721ccb npx wrangler pages deploy dist --project-name=fill --commit-dirty=true --commit-message=\"SEASTAR PRO v2.7 - project mgmt, BOM, 3D node map\")"
     ]
   }
 }

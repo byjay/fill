@@ -14,7 +14,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
   // Configuration State
   // Change 1: Default fillRatioLimit is now 40 (was 60)
   const [fillRatioLimit, setFillRatioLimit] = useState(40);
-  const [maxHeightLimit, setMaxHeightLimit] = useState(60);
+  const [maxHeightLimit, setMaxHeightLimit] = useState(120);
   const [numberOfTiers, setNumberOfTiers] = useState(1);
   const [manualWidth, setManualWidth] = useState<number | null>(null);
 
@@ -261,7 +261,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
               <div className="flex-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Stacking Height Limit (H)</label>
                 <div className="flex items-center gap-3">
-                  <input type="range" min="40" max="100" step="5" value={maxHeightLimit} onChange={e => setMaxHeightLimit(parseInt(e.target.value))} className="flex-1 accent-blue-500" />
+                  <input type="range" min="60" max="200" step="10" value={maxHeightLimit} onChange={e => setMaxHeightLimit(parseInt(e.target.value))} className="flex-1 accent-blue-500" />
                   <span className="text-xs font-bold text-blue-400 bg-slate-800 px-2 py-1 rounded border border-slate-700 w-12 text-center">{maxHeightLimit}</span>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useCallback, Suspense } from 'react';
+import React, { useMemo, useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Text, Line } from '@react-three/drei';
 import { CableData, NodeData } from '../types';
@@ -66,28 +66,28 @@ function getNodeColor(node: NodeData): string {
 }
 
 function getNodeColorForLegend(label: string): string {
-  // Try deck first
   const padded = label.padStart(2, '0');
   if (DECK_COLORS[padded]) return DECK_COLORS[padded];
-  // Try type
   const lower = label.toLowerCase();
   if (TYPE_COLORS[lower]) return TYPE_COLORS[lower];
   return DECK_COLORS.default;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Auto-layout: grid or circle, with deck-based Y separation
+// Auto-layout: force-directed using relation field, with deck-based Y separation
+// Nodes without coords are positioned via a simplified spring/repulsion layout.
 // ─────────────────────────────────────────────────────────────────────────────
 function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
   const positions: Record<string, THREE.Vector3> = {};
 
-  // Check if any node has explicit coordinates
-  const hasCoords = nodeData.some(
+  if (nodeData.length === 0) return positions;
+
+  // If ALL nodes have explicit x/y/z coords, use them directly (scaled for comfort)
+  const hasCoords = nodeData.every(
     (n) => n.x !== undefined && n.y !== undefined && n.z !== undefined,
   );
 
   if (hasCoords) {
-    // Use provided coordinates (scale for visual comfort)
     nodeData.forEach((node) => {
       const x = (node.x ?? 0) * 0.1;
       const y = (node.y ?? 0) * 0.1;
@@ -97,47 +97,131 @@ function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
     return positions;
   }
 
-  // Auto-layout: group by deck, arrange decks vertically, nodes in circle per deck
+  // Build adjacency from relation field
+  const adjacency: Record<string, string[]> = {};
+  nodeData.forEach((node) => {
+    const neighbors = node.relation
+      ? String(node.relation)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    adjacency[node.name] = neighbors;
+  });
+
+  // Group nodes by deck for hierarchical Y layout
   const deckMap: Record<string, NodeData[]> = {};
   nodeData.forEach((node) => {
     const deck = node.deck ?? 'default';
     if (!deckMap[deck]) deckMap[deck] = [];
     deckMap[deck].push(node);
   });
-
   const decks = Object.keys(deckMap).sort();
-  const deckSpacing = 12;
-  const baseRadius = 20;
-
-  decks.forEach((deck, di) => {
-    const nodes = deckMap[deck];
-    const yLevel = di * deckSpacing;
-    const radius = Math.max(baseRadius, nodes.length * 1.8);
-
-    nodes.forEach((node, ni) => {
-      const angle = (ni / nodes.length) * Math.PI * 2;
-      positions[node.name] = new THREE.Vector3(
-        Math.cos(angle) * radius,
-        yLevel,
-        Math.sin(angle) * radius,
-      );
-    });
+  const deckYMap: Record<string, number> = {};
+  decks.forEach((deck, i) => {
+    deckYMap[deck] = i * 14;
   });
+
+  // Initialize positions: circle per deck in XZ plane
+  nodeData.forEach((node) => {
+    const deck = node.deck ?? 'default';
+    const deckNodes = deckMap[deck];
+    const idx = deckNodes.indexOf(node);
+    const count = deckNodes.length;
+    const radius = Math.max(15, count * 1.8);
+    const angle = (idx / count) * Math.PI * 2;
+    const y = deckYMap[deck] ?? 0;
+    positions[node.name] = new THREE.Vector3(
+      Math.cos(angle) * radius,
+      y,
+      Math.sin(angle) * radius,
+    );
+  });
+
+  // Force-directed iterations (simplified Fruchterman-Reingold in XZ plane only)
+  const ITERATIONS = 80;
+  const IDEAL_LENGTH = 8;          // ideal spring rest length
+  const REPULSION = 200;           // repulsion constant
+  const ATTRACTION = 0.05;         // spring attraction constant
+  const MAX_DISP = 3;              // max displacement per iteration
+
+  const nodeNames = nodeData.map((n) => n.name);
+
+  for (let iter = 0; iter < ITERATIONS; iter++) {
+    const disp: Record<string, { dx: number; dz: number }> = {};
+    nodeNames.forEach((name) => {
+      disp[name] = { dx: 0, dz: 0 };
+    });
+
+    // Repulsion between all pairs
+    for (let i = 0; i < nodeNames.length; i++) {
+      for (let j = i + 1; j < nodeNames.length; j++) {
+        const a = nodeNames[i];
+        const b = nodeNames[j];
+        const pa = positions[a];
+        const pb = positions[b];
+        if (!pa || !pb) continue;
+
+        const dx = pa.x - pb.x;
+        const dz = pa.z - pb.z;
+        const distSq = dx * dx + dz * dz + 0.01;
+        const dist = Math.sqrt(distSq);
+        const force = REPULSION / distSq;
+
+        disp[a].dx += (dx / dist) * force;
+        disp[a].dz += (dz / dist) * force;
+        disp[b].dx -= (dx / dist) * force;
+        disp[b].dz -= (dz / dist) * force;
+      }
+    }
+
+    // Attraction along edges (relation links)
+    nodeNames.forEach((name) => {
+      const neighbors = adjacency[name] ?? [];
+      const pa = positions[name];
+      if (!pa) return;
+      neighbors.forEach((neighbor) => {
+        const pb = positions[neighbor];
+        if (!pb) return;
+        const dx = pb.x - pa.x;
+        const dz = pb.z - pa.z;
+        const dist = Math.sqrt(dx * dx + dz * dz + 0.01);
+        const force = ATTRACTION * (dist - IDEAL_LENGTH);
+        disp[name].dx += (dx / dist) * force;
+        disp[name].dz += (dz / dist) * force;
+      });
+    });
+
+    // Apply displacement (clamped, preserve deck Y)
+    nodeNames.forEach((name) => {
+      const pos = positions[name];
+      if (!pos) return;
+      const d = disp[name];
+      const mag = Math.sqrt(d.dx * d.dx + d.dz * d.dz);
+      if (mag > MAX_DISP) {
+        d.dx = (d.dx / mag) * MAX_DISP;
+        d.dz = (d.dz / mag) * MAX_DISP;
+      }
+      pos.x += d.dx;
+      pos.z += d.dz;
+      // Y is locked to deck level — do not change
+    });
+  }
 
   return positions;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cable path parser
-// calculatedPath is comma-separated node names OR arrow-separated
+// calculatedPath is comma-separated node names.
+// Also supports ' → ' arrow notation.
 // ─────────────────────────────────────────────────────────────────────────────
 function parseCablePath(cable: CableData): string[] {
   const raw = cable.calculatedPath || cable.path || '';
   if (!raw) return [];
-  // Support both ',' and ' → ' separators
   if (raw.includes(' → ')) return raw.split(' → ').map((s) => s.trim()).filter(Boolean);
   if (raw.includes(',')) return raw.split(',').map((s) => s.trim()).filter(Boolean);
-  return [raw.trim()];
+  return [raw.trim()].filter(Boolean);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,11 +251,14 @@ const CameraController: React.FC<CameraControllerProps> = ({
     }
   });
 
-  // Trigger reset when signal changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (resetSignal !== prevResetSignal.current) {
       prevResetSignal.current = resetSignal;
-      camera.position.set(center.x + distance, center.y + distance * 0.6, center.z + distance);
+      camera.position.set(
+        center.x + distance,
+        center.y + distance * 0.6,
+        center.z + distance,
+      );
       camera.lookAt(center);
       if (controlsRef.current) {
         controlsRef.current.target.copy(center);
@@ -207,17 +294,11 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
   const baseColor = getNodeColor(nodePos.node);
   const size = Math.max(0.4, Math.min(1.2, 0.4 + connectedCableCount * 0.08));
 
-  const color = isSelected
-    ? '#ffffff'
-    : isHighlighted
-    ? '#fbbf24'
-    : baseColor;
+  const color = isSelected ? '#ffffff' : isHighlighted ? '#fbbf24' : baseColor;
 
   useFrame((_, delta) => {
-    if (meshRef.current) {
-      if (isSelected || isHighlighted) {
-        meshRef.current.rotation.y += delta * 1.5;
-      }
+    if (meshRef.current && (isSelected || isHighlighted)) {
+      meshRef.current.rotation.y += delta * 1.5;
     }
   });
 
@@ -278,7 +359,7 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cable line
+// Cable line — traces actual node connections from calculatedPath
 // ─────────────────────────────────────────────────────────────────────────────
 interface CableLineProps {
   cable: CableData;
@@ -288,40 +369,54 @@ interface CableLineProps {
 
 const CableLine: React.FC<CableLineProps> = ({ cable, positions, isHighlighted }) => {
   const pathNodes = parseCablePath(cable);
-  if (pathNodes.length < 2) return null;
 
-  const points: THREE.Vector3[] = [];
+  // Build point array by resolving each node name to its 3D position.
+  // Skip segments where a node has no known position.
+  const segments: THREE.Vector3[][] = [];
+  let current: THREE.Vector3[] = [];
+
   for (const nodeName of pathNodes) {
     const pos = positions[nodeName];
-    if (pos) points.push(pos.clone());
+    if (pos) {
+      current.push(pos.clone());
+    } else {
+      // Gap in path — end current segment and start a new one
+      if (current.length >= 2) segments.push(current);
+      current = [];
+    }
   }
-  if (points.length < 2) return null;
+  if (current.length >= 2) segments.push(current);
+
+  if (segments.length === 0) return null;
 
   const color = isHighlighted ? '#fbbf24' : '#10b981';
   const lineWidth = isHighlighted ? 3 : 1;
 
   return (
-    <Line
-      points={points}
-      color={color}
-      lineWidth={lineWidth}
-      transparent
-      opacity={isHighlighted ? 1 : 0.4}
-    />
+    <>
+      {segments.map((pts, i) => (
+        <Line
+          key={i}
+          points={pts}
+          color={color}
+          lineWidth={lineWidth}
+          transparent
+          opacity={isHighlighted ? 1 : 0.4}
+        />
+      ))}
+    </>
   );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Grid floor
 // ─────────────────────────────────────────────────────────────────────────────
-const GridFloor: React.FC<{ center: THREE.Vector3 }> = ({ center }) => {
-  return (
-    <gridHelper
-      args={[200, 40, '#1e293b', '#1e293b']}
-      position={[center.x, center.y - 2, center.z]}
-    />
-  );
-};
+const GridFloor: React.FC<{ center: THREE.Vector3 }> = ({ center }) => (
+  <gridHelper
+    args={[200, 40, '#1e293b', '#1e293b']}
+    position={[center.x, center.y - 2, center.z]}
+  />
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main scene
@@ -362,65 +457,63 @@ const Scene: React.FC<SceneProps> = ({
   resetSignal,
   autoRotate,
   distance,
-}) => {
-  return (
-    <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[50, 80, 50]} intensity={0.8} castShadow />
-      <pointLight position={[-50, 50, -50]} intensity={0.3} color="#3b82f6" />
+}) => (
+  <>
+    <ambientLight intensity={0.5} />
+    <directionalLight position={[50, 80, 50]} intensity={0.8} castShadow />
+    <pointLight position={[-50, 50, -50]} intensity={0.3} color="#3b82f6" />
 
-      <GridFloor center={center} />
+    <GridFloor center={center} />
 
-      <CameraController
-        controlsRef={controlsRef}
-        resetSignal={resetSignal}
-        autoRotate={autoRotate}
-        center={center}
-        distance={distance}
-      />
+    <CameraController
+      controlsRef={controlsRef}
+      resetSignal={resetSignal}
+      autoRotate={autoRotate}
+      center={center}
+      distance={distance}
+    />
 
-      <OrbitControls
-        ref={controlsRef}
-        makeDefault
-        autoRotate={autoRotate}
-        autoRotateSpeed={0.5}
-        enableDamping
-        dampingFactor={0.05}
-        minDistance={5}
-        maxDistance={500}
-      />
+    <OrbitControls
+      ref={controlsRef}
+      makeDefault
+      autoRotate={autoRotate}
+      autoRotateSpeed={0.5}
+      enableDamping
+      dampingFactor={0.05}
+      minDistance={5}
+      maxDistance={500}
+    />
 
-      {/* Cable lines */}
-      {showCables &&
-        cableData.map((cable) => (
-          <CableLine
-            key={cable.id}
-            cable={cable}
-            positions={positions}
-            isHighlighted={highlightedCables.has(cable.name)}
+    {/* Cable lines rendered below nodes */}
+    {showCables &&
+      cableData.map((cable) => (
+        <CableLine
+          key={cable.id}
+          cable={cable}
+          positions={positions}
+          isHighlighted={highlightedCables.has(cable.name)}
+        />
+      ))}
+
+    {/* Node spheres */}
+    {showNodes &&
+      nodeData.map((node) => {
+        const pos = positions[node.name];
+        if (!pos) return null;
+        return (
+          <NodeSphere
+            key={node.name}
+            nodePos={{ node, position: pos }}
+            isSelected={selectedNode === node.name}
+            isHighlighted={highlightedNodes.has(node.name)}
+            connectedCableCount={cableCounts[node.name] ?? 0}
+            showLabel={showLabels}
+            onClick={onNodeClick}
           />
-        ))}
-
-      {/* Node spheres */}
-      {showNodes &&
-        nodeData.map((node) => {
-          const pos = positions[node.name];
-          if (!pos) return null;
-          return (
-            <NodeSphere
-              key={node.name}
-              nodePos={{ node, position: pos }}
-              isSelected={selectedNode === node.name}
-              isHighlighted={highlightedNodes.has(node.name)}
-              connectedCableCount={cableCounts[node.name] ?? 0}
-              showLabel={showLabels}
-              onClick={onNodeClick}
-            />
-          );
-        })}
-    </>
-  );
-};
+        );
+      })}
+  </>
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color legend
@@ -432,7 +525,6 @@ interface LegendProps {
 const ColorLegend: React.FC<LegendProps> = ({ nodeData }) => {
   const [collapsed, setCollapsed] = useState(false);
 
-  // Determine legend keys: deck if available, else type
   const useDeck = nodeData.some((n) => n.deck);
   const keys = useMemo(() => {
     if (useDeck) {
@@ -492,12 +584,21 @@ const NodeInfoPanel: React.FC<NodeInfoPanelProps> = ({
   onNodeSearchChange,
 }) => {
   const selected = nodeData.find((n) => n.name === selectedNode);
-  const connectedCables = selectedNode
-    ? cableData.filter((c) => {
-        const path = parseCablePath(c);
-        return path.includes(selectedNode);
-      })
-    : [];
+
+  const connectedCables = useMemo(
+    () =>
+      selectedNode
+        ? cableData.filter((c) => {
+            const path = parseCablePath(c);
+            return (
+              path.includes(selectedNode) ||
+              c.fromNode === selectedNode ||
+              c.toNode === selectedNode
+            );
+          })
+        : [],
+    [selectedNode, cableData],
+  );
 
   const filteredNodes = useMemo(
     () =>
@@ -535,6 +636,12 @@ const NodeInfoPanel: React.FC<NodeInfoPanelProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-500">Structure</span>
                   <span className="text-slate-300 truncate max-w-[120px]">{selected.structure}</span>
+                </div>
+              )}
+              {selected.relation && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500 shrink-0">Neighbors</span>
+                  <span className="text-slate-300 text-right truncate max-w-[130px]">{selected.relation}</span>
                 </div>
               )}
               <div className="flex justify-between">
@@ -717,6 +824,37 @@ const CanvasLoader: React.FC = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Small reusable toggle button
+// ─────────────────────────────────────────────────────────────────────────────
+interface ToggleBtnProps {
+  active: boolean;
+  onToggle: () => void;
+  activeLabel: string;
+  inactiveLabel: string;
+  activeColor: string;
+}
+
+const ToggleBtn: React.FC<ToggleBtnProps> = ({
+  active,
+  onToggle,
+  activeLabel,
+  inactiveLabel,
+  activeColor,
+}) => (
+  <button
+    onClick={onToggle}
+    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${
+      active
+        ? `bg-slate-800 border-slate-600 ${activeColor}`
+        : 'bg-slate-900 border-slate-800 text-slate-600'
+    }`}
+  >
+    {active ? <Eye size={13} /> : <EyeOff size={13} />}
+    {active ? activeLabel : inactiveLabel}
+  </button>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) => {
@@ -732,10 +870,10 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
 
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
-  // Build positions once per nodeData change
+  // Build positions once per nodeData change (force-directed layout)
   const positions = useMemo(() => buildPositions(nodeData), [nodeData]);
 
-  // Scene bounding info
+  // Scene bounding info for camera placement
   const { center, distance } = useMemo(() => {
     const vecs = Object.values(positions);
     if (vecs.length === 0) return { center: new THREE.Vector3(), distance: 60 };
@@ -749,16 +887,16 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     return { center: c, distance: d };
   }, [positions]);
 
-  // Cable counts per node
+  // Cable counts per node (from path, or fallback to fromNode/toNode)
   const cableCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     cableData.forEach((c) => {
       const path = parseCablePath(c);
-      path.forEach((nodeName) => {
-        counts[nodeName] = (counts[nodeName] ?? 0) + 1;
-      });
-      // Also count fromNode/toNode if no path
-      if (path.length === 0) {
+      if (path.length > 0) {
+        path.forEach((nodeName) => {
+          counts[nodeName] = (counts[nodeName] ?? 0) + 1;
+        });
+      } else {
         if (c.fromNode) counts[c.fromNode] = (counts[c.fromNode] ?? 0) + 1;
         if (c.toNode && c.toNode !== c.fromNode)
           counts[c.toNode] = (counts[c.toNode] ?? 0) + 1;
@@ -774,6 +912,8 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     cableData.forEach((c) => {
       if (highlightedCables.has(c.name)) {
         parseCablePath(c).forEach((n) => nodes.add(n));
+        if (c.fromNode) nodes.add(c.fromNode);
+        if (c.toNode) nodes.add(c.toNode);
       }
     });
     return nodes;
@@ -784,23 +924,19 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
   }, []);
 
   const handleHighlightCable = useCallback((cableName: string | null) => {
-    if (cableName === null) {
-      setHighlightedCables(new Set());
-    } else {
-      setHighlightedCables(new Set([cableName]));
-    }
+    setHighlightedCables(cableName === null ? new Set() : new Set([cableName]));
   }, []);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setResetSignal((s) => s + 1);
-  };
+  }, []);
 
-  const handleHardReset = () => {
+  const handleHardReset = useCallback(() => {
     setSelectedNode(null);
     setHighlightedCables(new Set());
     setNodeSearch('');
     setCanvasKey((k) => k + 1);
-  };
+  }, []);
 
   const hasData = nodeData.length > 0;
 
@@ -808,7 +944,6 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     <div className="flex flex-col h-full bg-slate-900 text-slate-200 overflow-hidden">
       {/* Top toolbar */}
       <div className="shrink-0 px-4 py-2 bg-slate-800 border-b border-slate-700 flex flex-wrap items-center gap-3">
-        {/* Reset / hard reset */}
         <button
           onClick={handleReset}
           title="Reset camera view"
@@ -826,7 +961,6 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
 
         <div className="w-px h-5 bg-slate-700" />
 
-        {/* Toggles */}
         <ToggleBtn
           active={showNodes}
           onToggle={() => setShowNodes((v) => !v)}
@@ -858,7 +992,6 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
 
         <div className="w-px h-5 bg-slate-700" />
 
-        {/* Cable search */}
         <CableSearchPanel
           cableData={cableData}
           highlightedCables={highlightedCables}
@@ -898,7 +1031,9 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
               </div>
               <div className="text-center">
                 <div className="text-sm font-bold text-slate-500">No node data loaded</div>
-                <div className="text-xs text-slate-700 mt-1">Upload node data from the sidebar to visualize the network</div>
+                <div className="text-xs text-slate-700 mt-1">
+                  Upload node data from the sidebar to visualize the network
+                </div>
               </div>
             </div>
           ) : (
@@ -941,10 +1076,8 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
             </Suspense>
           )}
 
-          {/* Legend overlay */}
           {hasData && <ColorLegend nodeData={nodeData} />}
 
-          {/* Controls hint */}
           {hasData && (
             <div className="absolute bottom-4 right-4 text-xs text-slate-700 text-right space-y-0.5 pointer-events-none">
               <div>Left drag: Orbit</div>
@@ -968,36 +1101,5 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Small reusable toggle button
-// ─────────────────────────────────────────────────────────────────────────────
-interface ToggleBtnProps {
-  active: boolean;
-  onToggle: () => void;
-  activeLabel: string;
-  inactiveLabel: string;
-  activeColor: string;
-}
-
-const ToggleBtn: React.FC<ToggleBtnProps> = ({
-  active,
-  onToggle,
-  activeLabel,
-  inactiveLabel,
-  activeColor,
-}) => (
-  <button
-    onClick={onToggle}
-    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${
-      active
-        ? `bg-slate-800 border-slate-600 ${activeColor}`
-        : 'bg-slate-900 border-slate-800 text-slate-600'
-    }`}
-  >
-    {active ? <Eye size={13} /> : <EyeOff size={13} />}
-    {active ? activeLabel : inactiveLabel}
-  </button>
-);
 
 export default ThreeDViewTab;

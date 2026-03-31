@@ -104,7 +104,7 @@ export const routeCables = (cables: CableData[], nodes: NodeData[]): CableData[]
 
     return {
       ...cable,
-      calculatedPath: path || undefined
+      calculatedPath: path ? path.join(',') : undefined
     };
   });
 };

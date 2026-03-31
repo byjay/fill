@@ -15,6 +15,10 @@ export interface CableData {
   toRest?: number;
   length?: number;
   checkNode?: string;
+  path?: string;
+  calculatedPath?: string;
+  calculatedLength?: number;
+  color?: string;
   wdPage?: string;
   supplyDeck?: string;
   porWeight?: number;
@@ -25,10 +29,6 @@ export interface CableData {
   remark3?: string;
   revision?: string;
   cableWeight?: number;
-  path?: string; // Original path string from user data
-  calculatedPath?: string; // Parsed path for routing/logic
-  calculatedLength?: number;
-  color?: string;
 }
 
 export interface NodeData {
@@ -40,6 +40,31 @@ export interface NodeData {
   linkLength?: number;
   areaSize?: number;
   connectedCables?: number;
+  // 3D coordinates
+  x?: number;
+  y?: number;
+  z?: number;
+  deck?: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  timestamp: string;
+  action: 'file_upload' | 'path_calculation' | 'cable_edit' | 'manual_save' | 'data_clear';
+  description: string;
+  cableCount?: number;
+  nodeCount?: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;       // 호선명
+  vesselNo: string;   // 호선번호
+  createdAt: string;
+  updatedAt: string;
+  cables: CableData[];
+  nodes: NodeData[];
+  history: HistoryEntry[];
 }
 
 export interface Point {

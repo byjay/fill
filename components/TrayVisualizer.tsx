@@ -22,12 +22,15 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
   onExportHtml,
   onExportDxf
 }) => {
-  const [zoom, setZoom] = useState(1.0);
+  // zoom===0 means "fit to viewport" (SVG uses width/height 100%)
+  // zoom>0 means explicit pixel scaling with scroll
+  const [zoom, setZoom] = useState(0);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-  // Clear highlight if systemResult changes (re-calculation)
+  // Clear highlight and reset to fit view when systemResult changes (re-calculation)
   useEffect(() => {
       setHighlightedId(null);
+      setZoom(0);
   }, [systemResult]);
 
   // --- Status Analysis Logic ---
@@ -61,13 +64,13 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
   }[status];
 
 
-  const getTypeColor = (type: string, idStr: string) => {
+  const getTypeColor = (type: string) => {
     let hash = 0;
     for (let i = 0; i < type.length; i++) {
         hash = type.charCodeAt(i) + ((hash << 5) - hash);
     }
     const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 85%, 70%)`; 
+    return `hsl(${hue}, 85%, 70%)`;
   };
 
   const processedTiers = useMemo(() => {
@@ -179,9 +182,9 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
             </div>
 
             {/* Calculation Breakdown Panel */}
-            <div className="bg-slate-50 border-b border-slate-200 p-3 grid grid-cols-3 gap-3 shrink-0">
+            <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap gap-3 shrink-0">
                 {systemResult.tiers.map((tier, idx) => (
-                    <div key={idx} className="bg-white rounded border border-slate-200 p-2 shadow-sm flex flex-col gap-1">
+                    <div key={idx} className="bg-white rounded border border-slate-200 p-2 shadow-sm flex flex-col gap-1 flex-1 min-w-[160px]">
                         <div className="flex justify-between items-center border-b border-slate-100 pb-1 mb-1">
                             <span className="text-[10px] font-black text-slate-700 uppercase">Tier L{idx+1} Summary</span>
                             <span className={`text-[9px] font-bold px-1.5 rounded ${tier.maxStackHeight > TRAY_HEIGHT ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
@@ -202,18 +205,21 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
                 ))}
             </div>
 
-            <div className="flex-1 relative overflow-auto bg-white shadow-inner">
+            <div className="flex-1 relative bg-white shadow-inner" style={{ overflow: zoom === 0 ? 'hidden' : 'auto' }}>
                 <div className="absolute top-2 right-2 flex gap-1.5 z-10">
-                    <button onClick={() => setZoom(z => Math.max(0.2, z - 0.1))} className="p-1.5 bg-white border border-slate-200 rounded shadow text-slate-500 hover:text-slate-900"><ZoomOut size={14}/></button>
-                    <button onClick={() => setZoom(1.0)} className="p-1.5 bg-white border border-slate-200 rounded shadow text-slate-500 hover:text-slate-900"><Maximize size={14}/></button>
-                    <button onClick={() => setZoom(z => Math.min(4, z + 0.1))} className="p-1.5 bg-white border border-slate-200 rounded shadow text-slate-500 hover:text-slate-900"><ZoomIn size={14}/></button>
+                    <button onClick={() => setZoom(z => z === 0 ? 0.8 : Math.max(0.2, z - 0.1))} className="p-1.5 bg-white border border-slate-200 rounded shadow text-slate-500 hover:text-slate-900"><ZoomOut size={14}/></button>
+                    <button onClick={() => setZoom(0)} title="Fit to viewport" className="p-1.5 bg-white border border-slate-200 rounded shadow text-slate-500 hover:text-slate-900"><Maximize size={14}/></button>
+                    <button onClick={() => setZoom(z => z === 0 ? 1.2 : Math.min(4, z + 0.1))} className="p-1.5 bg-white border border-slate-200 rounded shadow text-slate-500 hover:text-slate-900"><ZoomIn size={14}/></button>
                 </div>
 
-                <div className="min-w-full min-h-full flex items-center justify-center p-12">
-                    <svg 
-                        width={DRAWING_WIDTH * zoom} 
-                        height={SVG_HEIGHT * zoom} 
+                {/* zoom===0 → SVG fills container exactly (auto-scale via viewBox + preserveAspectRatio) */}
+                {/* zoom>0  → SVG at explicit pixel size, container scrolls for pan/detail */}
+                <div className={zoom === 0 ? 'absolute inset-0' : 'min-w-full min-h-full flex items-center justify-center p-12'}>
+                    <svg
+                        width={zoom === 0 ? '100%' : DRAWING_WIDTH * zoom}
+                        height={zoom === 0 ? '100%' : SVG_HEIGHT * zoom}
                         viewBox={`0 0 ${DRAWING_WIDTH} ${SVG_HEIGHT}`}
+                        preserveAspectRatio="xMidYMid meet"
                         className="bg-white"
                         onClick={() => setHighlightedId(null)} // Click background to deselect
                     >
@@ -290,7 +296,7 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
                                                     cx={X_TRAY_START + c.x} 
                                                     cy={cy} 
                                                     r={c.od/2} 
-                                                    fill={getTypeColor(c.type, c.id)} 
+                                                    fill={getTypeColor(c.type)}
                                                     stroke={isHighlighted ? "#f59e0b" : "#000"} 
                                                     strokeWidth={isHighlighted ? "3" : "1.2"} 
                                                     className="transition-all duration-200"

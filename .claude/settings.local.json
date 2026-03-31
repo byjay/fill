@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npm run:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(curl -s -X GET \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects\" -H \"Authorization: Bearer v7zolsDGTztwrP6nO3c731ZVzz6qeZd-tMEEUB7g\" -H \"Content-Type: application/json\")",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s -X GET https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects -H 'Authorization: Bearer v7zolsDGTztwrP6nO3c731ZVzz6qeZd-tMEEUB7g')",
+      "Bash(curl -s -X POST \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects\" -H \"Authorization: Bearer v7zolsDGTztwrP6nO3c731ZVzz6qeZd-tMEEUB7g\" -H \"Content-Type: application/json\" -d '{\"\"name\"\":\"\"fill\"\",\"\"production_branch\"\":\"\"main\"\"}')",
+      "Bash(npx wrangler:*)",
+      "Bash(npm install:*)",
+      "Bash(echo 'not directly in root' find E:code-projectcalbleSCMS_V1node_modulesthree-stdlib -name OrbitControls*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

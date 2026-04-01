@@ -7,7 +7,8 @@ interface LoginScreenProps {
 
 // ── OAuth 환경변수 (Cloudflare Pages 환경변수에서 설정) ──────────────
 const KAKAO_APP_KEY   = (import.meta as any).env?.VITE_KAKAO_APP_KEY   || '';
-const NAVER_CLIENT_ID = (import.meta as any).env?.VITE_NAVER_CLIENT_ID  || '';
+// Naver Client ID는 공개값 (OAuth redirect URL에 노출됨) — 직접 하드코딩
+const NAVER_CLIENT_ID = (import.meta as any).env?.VITE_NAVER_CLIENT_ID  || 'Sc7hFrtTJvFG2vfxWzM';
 const NAVER_CALLBACK  = (import.meta as any).env?.VITE_NAVER_CALLBACK   || (typeof window !== 'undefined' ? window.location.origin : '');
 const BUILD_VERSION   = '3.1.0';
 

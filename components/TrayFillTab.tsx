@@ -1,15 +1,24 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { CableData, SystemResult } from '../types';
+import { CableData, SystemResult, TrayFillSummary } from '../types';
 import { solveSystem, solveSystemAtWidth } from '../services/solver';
 import TrayVisualizer from './TrayVisualizer';
-import { MapPin, Calculator, FileCode, Star } from 'lucide-react';
+import { MapPin, Calculator, FileCode, Star, AlertTriangle, Zap } from 'lucide-react';
 
 interface TrayFillTabProps {
   cableData: CableData[];
+  trayFillSummary?: TrayFillSummary;         // 백엔드 사전 계산 결과
+  onRequestTrayFill?: () => Promise<void>;   // 사전 계산 트리거
+  isTrayFillCalculating?: boolean;           // 백엔드 계산 중 여부
 }
 
-const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
+const TrayFillTab: React.FC<TrayFillTabProps> = ({
+  cableData,
+  trayFillSummary,
+  onRequestTrayFill,
+  isTrayFillCalculating = false,
+}) => {
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [showWarning, setShowWarning] = useState(false);
 
   // Configuration State
   // Change 1: Default fillRatioLimit is now 40 (was 60)
@@ -148,8 +157,42 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
     document.body.removeChild(a);
   };
 
+  // 사전 계산 없을 때 경고 표시 여부
+  const hasSummary = trayFillSummary && Object.keys(trayFillSummary).length > 0;
+
   return (
-    <div className="flex h-full bg-slate-900 text-slate-200 overflow-hidden">
+    <div className="flex h-full bg-slate-900 text-slate-200 overflow-hidden flex-col">
+
+      {/* ── 사전 계산 경고 배너 ── */}
+      {!hasSummary && !isTrayFillCalculating && cableData.length > 0 && (
+        <div className="bg-amber-900/40 border-b border-amber-500/30 px-4 py-2.5 flex items-center gap-3 shrink-0">
+          <AlertTriangle size={15} className="text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-300 flex-1">
+            전체 노드 트레이폭이 아직 계산되지 않았습니다.
+            케이블 수에 따라 <span className="font-bold">수~수십 분</span> 소요될 수 있습니다.
+            서버에서 백그라운드 처리하므로 화면이 멈추지 않습니다.
+          </p>
+          {onRequestTrayFill && (
+            <button
+              onClick={onRequestTrayFill}
+              className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shrink-0"
+            >
+              <Zap size={12} /> 지금 계산
+            </button>
+          )}
+        </div>
+      )}
+
+      {isTrayFillCalculating && (
+        <div className="bg-blue-900/40 border-b border-blue-500/30 px-4 py-2.5 flex items-center gap-3 shrink-0">
+          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+          <p className="text-xs text-blue-300">
+            서버에서 전체 노드 트레이폭 계산 중... ({cableData.length} 케이블 처리)
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
       <div className="w-1/4 flex flex-col border-r border-slate-800 bg-slate-800">
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
           <button
@@ -172,6 +215,11 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
             <div className="bg-slate-800 text-slate-300 p-3 flex items-center gap-2 shrink-0 border-b border-slate-700">
               <MapPin size={14} className="text-blue-400" />
               <h3 className="text-xs font-bold uppercase tracking-widest">Aggregate Path Nodes</h3>
+              {hasSummary && (
+                <span className="ml-auto text-[9px] text-emerald-400 font-bold bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                  ✓ 사전계산완료
+                </span>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {nodeStats.length === 0 ? (
@@ -179,23 +227,37 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
               ) : (
                 nodeStats.map((node, idx) => {
                   const isBusiest = idx === 0;
+                  const preCalc = trayFillSummary?.[node.name];
+                  // fill 비율에 따른 색상
+                  const fillColor = preCalc
+                    ? preCalc.fillRatio >= 70 ? 'text-red-400'
+                      : preCalc.fillRatio >= 50 ? 'text-amber-400'
+                      : 'text-emerald-400'
+                    : '';
                   return (
                     <button
                       key={node.name}
                       onClick={() => setSelectedNode(node.name)}
                       className={`w-full text-left px-3 py-2.5 rounded-lg flex justify-between items-center transition-all group ${selectedNode === node.name ? 'bg-blue-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-400'}`}
                     >
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold tracking-tight">{node.name}</span>
-                          {/* Busiest node indicator in the list */}
                           {isBusiest && (
                             <span className="flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
                               <Star size={7} className="fill-current" /> BUSIEST
                             </span>
                           )}
                         </div>
-                        <span className={`text-[9px] font-bold ${selectedNode === node.name ? 'text-blue-200' : 'text-slate-500'}`}>POINT CROSS-SECTION</span>
+                        {preCalc ? (
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] font-bold ${selectedNode === node.name ? 'text-blue-100' : fillColor}`}>
+                              ▶ {preCalc.recommendedWidth}mm ({preCalc.fillRatio}% fill)
+                            </span>
+                          </div>
+                        ) : (
+                          <span className={`text-[9px] font-bold ${selectedNode === node.name ? 'text-blue-200' : 'text-slate-500'}`}>POINT CROSS-SECTION</span>
+                        )}
                       </div>
                       <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedNode === node.name ? 'bg-white text-blue-600' : 'bg-slate-700 text-slate-400'}`}>
                         {node.count} CABLES
@@ -290,6 +352,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({ cableData }) => {
           </div>
         </div>
       </div>
+      </div>{/* end flex row */}
     </div>
   );
 };

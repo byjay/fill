@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { CableData, NodeData, UserInfo } from './types';
+import { CableData, NodeData, UserInfo, TrayFillSummary } from './types';
+import { calculateTrayFillAPI } from './services/apiClient';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import LoginScreen from './components/LoginScreen';
 import ProjectSelectionScreen from './components/ProjectSelectionScreen';
@@ -587,6 +588,26 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   // ── Project switcher dropdown ──────────────────────────────────────────────
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
+  // ── Tray Fill 사전 계산 ────────────────────────────────────────────────────
+  const [trayFillSummary, setTrayFillSummary] = useState<TrayFillSummary | undefined>(undefined);
+  const [isTrayFillCalculating, setIsTrayFillCalculating] = useState(false);
+
+  // 프로젝트 변경 시 사전 계산 결과 초기화
+  useEffect(() => { setTrayFillSummary(undefined); }, [currentProject?.id]);
+
+  const handleRequestTrayFill = useCallback(async () => {
+    if (!currentProject) return;
+    setIsTrayFillCalculating(true);
+    try {
+      const res = await calculateTrayFillAPI(currentProject.id);
+      if (res.success) setTrayFillSummary(res.results);
+    } catch (err) {
+      console.warn('TrayFill 계산 실패:', err);
+    } finally {
+      setIsTrayFillCalculating(false);
+    }
+  }, [currentProject]);
+
   // Helper: push snapshot before a mutating cables/nodes update
   const pushUndo = useCallback((prevCables: CableData[], prevNodes: NodeData[]) => {
     setUndoStack(prev => {
@@ -1117,7 +1138,14 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
                 onRecalculateSelected={handleRecalculateSelected}
               />
             )}
-            {activeTab === 'trayfill' && <TrayFillTab cableData={cables} />}
+            {activeTab === 'trayfill' && (
+                <TrayFillTab
+                  cableData={cables}
+                  trayFillSummary={trayFillSummary}
+                  onRequestTrayFill={handleRequestTrayFill}
+                  isTrayFillCalculating={isTrayFillCalculating}
+                />
+              )}
             {activeTab === '3d' && (
               <ThreeDViewTab cableData={cables} nodeData={nodes} />
             )}

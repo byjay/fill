@@ -118,3 +118,13 @@ export interface MatrixCell {
 export const MARGIN_X = 10;
 export const MAX_PILE_WIDTH = 200;
 export const PILE_GAP = 10;
+
+// ─── Tray Fill 사전 계산 결과 ───────────────────────────────────────────────
+export interface TrayFillNodeResult {
+  cableCount: number;
+  totalArea: number;       // mm² (케이블 단면적 합계)
+  recommendedWidth: number; // 표준 트레이폭 (mm)
+  fillRatio: number;       // fill 비율 (%)
+}
+
+export type TrayFillSummary = Record<string, TrayFillNodeResult>;

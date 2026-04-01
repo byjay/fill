@@ -38,12 +38,17 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
 
   const db = env.scms_db;
 
-  // ── GET: 프로젝트 목록 ──────────────────────────────────
+  // ── GET: 프로젝트 목록 (admin은 전체 조회) ──────────────────────────────────
   if (request.method === 'GET') {
-    const { results } = await db
-      .prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC')
-      .bind(userId)
-      .all();
+    const isAdmin = userId === 'admin_user';
+    const query = isAdmin
+      ? 'SELECT * FROM projects ORDER BY updated_at DESC'
+      : 'SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC';
+    const stmt = isAdmin
+      ? db.prepare(query)
+      : db.prepare(query).bind(userId);
+
+    const { results } = await stmt.all();
 
     const projects = results.map((r: any) => ({
       id: r.id,

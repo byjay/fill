@@ -4,15 +4,36 @@
  */
 
 import { getAuthToken } from './firebase';
-import type { Project, CableData, NodeData, HistoryEntry } from '../types';
+import type { Project, CableData, NodeData, HistoryEntry, TrayFillSummary } from '../types';
 
 const BASE = '/api';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const token = await getAuthToken();
+  // 1) Firebase 인증 사용자(Google) → Firebase ID 토큰 사용
+  const firebaseToken = await getAuthToken();
+  if (firebaseToken) {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${firebaseToken}`,
+    };
+  }
+  // 2) 게스트/관리자(로컬 로그인) → localStorage의 userId 사용
+  //    firebase 토큰이 없으면 세션에 저장된 id(guest_xxx / admin_user)를 그대로 Bearer로 전달
+  try {
+    const raw = localStorage.getItem('scms_user_session');
+    if (raw) {
+      const session = JSON.parse(raw) as { id?: string };
+      if (session?.id) {
+        return {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.id}`,
+        };
+      }
+    }
+  } catch { /* ignore */ }
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token || 'anonymous'}`,
+    'Authorization': 'Bearer anonymous',
   };
 }
 
@@ -59,6 +80,22 @@ export async function deleteProjectAPI(id: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error(`deleteProject failed: ${res.status}`);
+}
+
+// ── 트레이 폭 사전 계산 (백엔드 Worker) ──────────────────────────────────
+export async function calculateTrayFillAPI(projectId: string): Promise<{
+  success: boolean;
+  nodeCount: number;
+  cableCount: number;
+  results: TrayFillSummary;
+}> {
+  const res = await fetch(`${BASE}/tray-fill`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ projectId }),
+  });
+  if (!res.ok) throw new Error(`trayFill failed: ${res.status}`);
+  return res.json();
 }
 
 // ── 히스토리 엔트리 생성 헬퍼 ──────────────────────────────────

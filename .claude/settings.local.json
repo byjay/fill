@@ -51,7 +51,24 @@
       "Bash(curl -s -X POST \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects/fill/domains\" -H \"Authorization: Bearer bKuzYaJ_JC8ZOK8WMOY4k6-vGdmnhq0tICsTcogPwgk.0ayHYFja0i1PrQ54N2QQ0SYveIUysYeP0Uf6XiXyilE\" -H \"Content-Type: application/json\" -d '{\"\"name\"\":\"\"scm.seastar.work\"\"}')",
       "Bash(curl -s \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects/fill/domains\" -H \"Authorization: Bearer bKuzYaJ_JC8ZOK8WMOY4k6-vGdmnhq0tICsTcogPwgk.0ayHYFja0i1PrQ54N2QQ0SYveIUysYeP0Uf6XiXyilE\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(r[''''name''''], r[''''status''''], r.get\\(''''verification_data'''',{}\\).get\\(''''status'''',''''''''\\)\\) for r in d[''''result'''']]\")",
-      "Bash(nslookup scm.seastar.work 8.8.8.8)"
+      "Bash(nslookup scm.seastar.work 8.8.8.8)",
+      "Bash(grep -v \"^$\")",
+      "Bash(__NEW_LINE_6073946c6daa67a2__ echo:*)",
+      "Bash(curl -s \"https://fill-1sg.pages.dev/api/projects\" -H \"Authorization: Bearer guest_user\")",
+      "Bash(__NEW_LINE_876e6430a81b85c4__ echo:*)",
+      "Bash(python -c \"import sys,json; [print\\('''' -'''',p[''''name''''],p[''''vesselNo'''']\\) for p in json.load\\(sys.stdin\\)]\")",
+      "Bash(curl -s \"https://fill-1sg.pages.dev/api/projects\" -H \"Authorization: Bearer admin_user\")",
+      "Bash(__NEW_LINE_cf89ca4eae3f8e3a__ echo:*)",
+      "Bash(PROJ_ID=\"proj_1775024079257\")",
+      "Bash(curl -s -X PUT \"https://fill-1sg.pages.dev/api/projects/$PROJ_ID\" -H \"Authorization: Bearer admin_user\" -H \"Content-Type: application/json\" -d '{\"\"\"\"cables\"\"\"\":[{\"\"\"\"id\"\"\"\":\"\"\"\"c1\"\"\"\",\"\"\"\"name\"\"\"\":\"\"\"\"TEST-CABLE-001\"\"\"\",\"\"\"\"type\"\"\"\":\"\"\"\"XLPE\"\"\"\",\"\"\"\"od\"\"\"\":25,\"\"\"\"system\"\"\"\":\"\"\"\"PWR\"\"\"\",\"\"\"\"fromNode\"\"\"\":\"\"\"\"A1\"\"\"\",\"\"\"\"toNode\"\"\"\":\"\"\"\"B1\"\"\"\"}],\"\"\"\"nodes\"\"\"\":[],\"\"\"\"history\"\"\"\":[]}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''케이블'''',len\\(d[''''cables'''']\\),''''개 저장됨, updatedAt:'''',d[''''updatedAt'''']\\)\")",
+      "Bash(__NEW_LINE_2a1add38117518e8__ PROJ_ID=\"proj_1775024079257\")",
+      "Bash(curl -s -X PUT \"https://fill-1sg.pages.dev/api/projects/$PROJ_ID\" -H \"Authorization: Bearer admin_user\" -H \"Content-Type: application/json\" -d '{\"\"cables\"\":[{\"\"id\"\":\"\"c1\"\",\"\"name\"\":\"\"TEST-CABLE-001\"\",\"\"type\"\":\"\"XLPE\"\",\"\"od\"\":25,\"\"system\"\":\"\"PWR\"\",\"\"fromNode\"\":\"\"A1\"\",\"\"toNode\"\":\"\"B1\"\"}],\"\"nodes\"\":[],\"\"history\"\":[]}')",
+      "Bash(dir \"E:\\\\code-project\\\\calble\\\\SCMS_V1\\\\functions\\\\api\"\")",
+      "Bash(curl -s \"https://identitytoolkit.googleapis.com/v2/projects/seastar-cable-auth-99/config?key=AIzaSyCjajL5P62Vk6Fn-Q_cyRPNdaPsmNJJcg4\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''✅ 성공'''' if d.get\\(''''success''''\\) else f''''❌ 실패: {d.get\\(\"\"errors\"\"\\)}''''\\)\")",
+      "Bash(TOKEN=\"ysnj-ivWF-ikWkb0PGN8ntDgoJr22yGokZvmbPIv9bM.i0Le3USDQaeqW05rg_nHLp07euKO3gXgZczciVO6CLg\" curl -s \"https://api.cloudflare.com/client/v4/accounts/65a3e734c27681a2734f87c0c5721ccb/pages/projects/fill\" -H \"Authorization: Bearer $TOKEN\")"
     ]
   }
 }

@@ -9,8 +9,10 @@ interface LoginScreenProps {
 const KAKAO_APP_KEY   = (import.meta as any).env?.VITE_KAKAO_APP_KEY   || '';
 // Naver Client ID는 공개값 (OAuth redirect URL에 노출됨) — 직접 하드코딩
 const NAVER_CLIENT_ID = (import.meta as any).env?.VITE_NAVER_CLIENT_ID  || 'Sc7hFrtTJvFG2vfxWzM';
-const NAVER_CALLBACK  = (import.meta as any).env?.VITE_NAVER_CALLBACK   || (typeof window !== 'undefined' ? window.location.origin : '');
-const BUILD_VERSION   = '3.1.0';
+// Callback URL: 배포 도메인 고정 (window.location.origin 사용 시 Naver 앱 등록 URI와 일치 불가 문제 해결)
+const NAVER_CALLBACK  = (import.meta as any).env?.VITE_NAVER_CALLBACK
+  || (typeof window !== 'undefined' ? window.location.origin : '');
+const BUILD_VERSION   = '3.2.0';
 
 /* ─── Naver OAuth redirect handler (페이지 로드 시 hash/query 파싱) ─── */
 function parseNaverCallback(): { name: string; email: string } | null {
@@ -55,46 +57,58 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     document.head.appendChild(s);
   }, []);
 
-  /* ── Naver Login SDK 로드 + 버튼 렌더 ── */
+  /* ── Naver Login SDK 로드 ── */
   useEffect(() => {
     if (!NAVER_CLIENT_ID) return;
-    if (document.getElementById('naver-sdk')) return;
-    const s = document.createElement('script');
-    s.id = 'naver-sdk';
-    s.src = 'https://static.nid.naver.com/js/naverLogin_implicit-1.0.3.js';
-    s.onload = () => {
+
+    const initNaver = () => {
       const naver = (window as any).naver_id_login;
       if (!naver) return;
       naver.set_client_id(NAVER_CLIENT_ID);
-      naver.set_redirect_uri(NAVER_CALLBACK);
+      naver.set_redirect_uri(NAVER_CALLBACK || window.location.origin);
       naver.set_state(Math.random().toString(36).substring(7));
     };
+
+    if (document.getElementById('naver-sdk')) {
+      // 이미 로드된 경우 바로 초기화
+      initNaver();
+      return;
+    }
+    const s = document.createElement('script');
+    s.id = 'naver-sdk';
+    s.src = 'https://static.nid.naver.com/js/naverLogin_implicit-1.0.3.js';
+    s.onload = initNaver;
     document.head.appendChild(s);
   }, []);
 
-  /* ── Naver 콜백 토큰 처리 ── */
+  /* ── Naver 콜백 토큰 처리 (CORS 프록시 경유) ── */
   useEffect(() => {
     const result = parseNaverCallback();
     if (!result) return;
     const token = sessionStorage.getItem('naver_access_token');
     if (!token) return;
     setLoading('naver');
-    fetch('https://openapi.naver.com/v1/nid/me', {
+    // 브라우저→openapi.naver.com 직접 호출은 CORS 오류 발생
+    // → 서버사이드 프록시 /api/naver-user 경유
+    fetch('/api/naver-user', {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(data => {
         sessionStorage.removeItem('naver_access_token');
-        onLogin({
-          name: data.response?.name || '네이버 사용자',
-          email: data.response?.email || '',
-          provider: 'naver',
-        });
+        if (data.response?.name) {
+          onLogin({
+            name: data.response.name,
+            email: data.response.email || '',
+            provider: 'naver',
+          });
+        } else {
+          setError('네이버 사용자 정보를 가져오지 못했습니다. 관리자에게 문의하세요: designsir@naver.com');
+        }
       })
       .catch(() => {
         sessionStorage.removeItem('naver_access_token');
-        // CORS 제한으로 클라이언트에서 직접 호출 불가 → 이름 없이 로그인
-        onLogin({ name: '네이버 사용자', email: '', provider: 'naver' });
+        setError('네이버 사용자 정보 조회 실패. 관리자에게 문의하세요: designsir@naver.com');
       })
       .finally(() => setLoading(null));
   }, []);
@@ -111,8 +125,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user') {
         setError('로그인 창이 닫혔습니다. 다시 시도해 주세요.');
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        setError('이 도메인은 구글 로그인이 허용되지 않았습니다. 관리자에게 문의하세요: designsir@naver.com');
       } else {
-        setError('구글 로그인에 실패했습니다: ' + (err?.message || ''));
+        setError('구글 로그인 실패. 문제가 지속되면 관리자에게 문의하세요: designsir@naver.com');
       }
     } finally {
       setLoading(null);
@@ -121,7 +137,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
   const handleKakao = () => {
     if (!KAKAO_APP_KEY) {
-      onLogin({ name: 'Demo User', email: 'demo@seastar.com', provider: 'kakao' });
+      setError('카카오 로그인을 현재 이용할 수 없습니다. 관리자에게 문의하세요: designsir@naver.com');
       return;
     }
     setLoading('kakao');
@@ -145,7 +161,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             setLoading(null);
           },
           fail: () => {
-            setError('카카오 사용자 정보 조회 실패');
+            setError('카카오 사용자 정보 조회 실패. 관리자 문의: designsir@naver.com');
             setLoading(null);
           },
         });
@@ -159,48 +175,69 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
   const handleNaver = () => {
     if (!NAVER_CLIENT_ID) {
-      onLogin({ name: 'Demo User', email: 'demo@seastar.com', provider: 'naver' });
+      setError('네이버 로그인을 현재 이용할 수 없습니다. 관리자에게 문의하세요: designsir@naver.com');
       return;
     }
-    const naver = (window as any).naver_id_login;
-    if (!naver) {
-      setError('네이버 SDK 로딩 중입니다. 잠시 후 다시 시도해 주세요.');
-      return;
-    }
-    naver.set_state(Math.random().toString(36).substring(7));
-    naver.go_login(); // Naver OAuth 페이지로 리다이렉트
+    const tryLogin = (attempt = 0) => {
+      const naver = (window as any).naver_id_login;
+      if (!naver) {
+        if (attempt < 5) {
+          // SDK가 아직 로드 중 → 최대 2.5초 대기 후 재시도
+          setTimeout(() => tryLogin(attempt + 1), 500);
+        } else {
+          setError('네이버 SDK 로드 실패. 관리자에게 문의하세요: designsir@naver.com');
+        }
+        return;
+      }
+      setError(null);
+      naver.set_client_id(NAVER_CLIENT_ID);
+      naver.set_redirect_uri(NAVER_CALLBACK || window.location.origin);
+      naver.set_state(Math.random().toString(36).substring(7));
+      naver.go_login(); // Naver OAuth 페이지로 리다이렉트
+    };
+    tryLogin();
   };
 
-  // ── 게스트 (이름 + 초대코드) / 관리자 (숨김) 로그인 ──────────────────────────────
+  // ── 게스트 (이름 + 초대코드) / 관리자 (email + 비번) 로그인 ──────────────────────────────
   const [showGuestForm, setShowGuestForm] = useState(false);
+  const [formMode, setFormMode] = useState<'guest' | 'admin'>('guest');
   const [guestName, setGuestName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPw, setAdminPw] = useState('');
   const [guestError, setGuestError] = useState('');
 
-  // 초대코드 → 권한 레벨: 'guest' = 일반, 'admin' = 관리자
-  const INVITE_CODES: Record<string, { role: 'guest' | 'admin'; uid: string }> = {
-    'SEASTAR2025': { role: 'guest', uid: '' }, // uid는 이름 기반으로 생성
-    'ADMIN2239':   { role: 'admin', uid: 'admin_user' },
-  };
+  const GUEST_INVITE_CODE = '0953';
+  const ADMIN_EMAIL = 'designssir@gmail.com';
+  const ADMIN_PW = '2239';
 
   const handleGuestLogin = () => {
+    if (formMode === 'admin') {
+      if (adminEmail.trim().toLowerCase() !== ADMIN_EMAIL) {
+        setGuestError('관리자 이메일이 올바르지 않습니다.');
+        return;
+      }
+      if (adminPw !== ADMIN_PW) {
+        setGuestError('비밀번호가 올바르지 않습니다.');
+        return;
+      }
+      setGuestError('');
+      onLogin({ name: '관리자', email: ADMIN_EMAIL, provider: 'local', uid: 'admin_user' });
+      return;
+    }
+    // guest mode
     if (!guestName.trim()) {
       setGuestError('이름을 입력해 주세요.');
       return;
     }
-    const entry = INVITE_CODES[inviteCode.trim().toUpperCase()];
-    if (!entry) {
+    if (inviteCode.trim() !== GUEST_INVITE_CODE) {
       setGuestError('초대코드가 올바르지 않습니다.');
       return;
     }
     setGuestError('');
-    const uid = entry.role === 'admin' ? 'admin_user' : `guest_${guestName.trim().replace(/\s+/g, '_').toLowerCase()}`;
-    onLogin({
-      name: guestName.trim(),
-      email: `${uid}@scms.local`,
-      provider: 'local',
-      uid,
-    });
+    // 같은 이름 = 같은 userId → 같은 호선 데이터 유지
+    const uid = `guest_${guestName.trim().replace(/\s+/g, '_').toLowerCase()}`;
+    onLogin({ name: guestName.trim(), email: `${uid}@scms.local`, provider: 'local', uid });
   };
 
   return (
@@ -221,20 +258,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       <div className="w-full max-w-[420px] mx-4 bg-[#1e293b]/90 backdrop-blur-md rounded-2xl shadow-2xl border border-white/5 relative z-20 flex flex-col overflow-hidden"
         style={{ animation: 'fadeInUp 0.35s ease' }}>
 
-        {/* ── HEADER: LOGO ── */}
+        {/* ── HEADER: LOGO (나란히 2개 섹션) ── */}
         <div className="w-full py-6 text-center relative bg-slate-900/60 flex flex-col items-center gap-2">
-          <div className="w-full px-6 flex items-center justify-center gap-4">
-            <img
-              src="/logo.jpg"
-              alt="SEASTAR"
-              className="h-16 object-contain drop-shadow-lg"
-            />
-            <div className="w-px h-10 bg-slate-600/60" />
-            <img
-              src="/scms_logo.png"
-              alt="SCMS"
-              className="h-16 object-contain drop-shadow-lg"
-            />
+          <div className="w-full px-6 flex items-center justify-center gap-3">
+            {/* SEASTAR 로고 섹션 */}
+            <div className="flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl bg-slate-800/50 border border-slate-700/30">
+              <img
+                src="/logo.jpg"
+                alt="SEASTAR"
+                className="h-14 object-contain drop-shadow-lg"
+              />
+              <span className="text-[9px] text-slate-400 font-semibold tracking-wider uppercase">SEASTAR</span>
+            </div>
+            {/* SCMS 로고 섹션 */}
+            <div className="flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl bg-slate-800/50 border border-slate-700/30">
+              <img
+                src="/scms_logo.png"
+                alt="SCMS"
+                className="h-14 object-contain drop-shadow-lg"
+              />
+              <span className="text-[9px] text-blue-400/80 font-semibold tracking-wider uppercase">SCMS</span>
+            </div>
           </div>
           <div className="text-[9px] text-slate-600 font-mono">v{BUILD_VERSION}</div>
         </div>
@@ -311,10 +355,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <div className="flex-1 h-px bg-slate-700/60" />
           </div>
 
-          {/* ── 게스트 로그인 (초대코드) ── */}
+          {/* ── 게스트 / 관리자 로그인 ── */}
           {!showGuestForm ? (
             <button
-              onClick={() => setShowGuestForm(true)}
+              onClick={() => { setShowGuestForm(true); setFormMode('guest'); }}
               disabled={loading !== null}
               className="w-full py-3 rounded-xl text-slate-400 hover:text-white text-xs font-semibold border border-slate-700/50 hover:border-slate-500 bg-transparent hover:bg-slate-700/30 transition-all disabled:opacity-50"
             >
@@ -322,30 +366,67 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             </button>
           ) : (
             <div className="rounded-xl border border-slate-600/50 bg-slate-800/50 p-4 flex flex-col gap-2">
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">이름 &amp; 초대코드 입력</p>
+              {/* 탭 */}
+              <div className="flex rounded-lg overflow-hidden border border-slate-700 mb-1">
+                <button
+                  onClick={() => { setFormMode('guest'); setGuestError(''); }}
+                  className={`flex-1 py-1.5 text-[10px] font-bold transition-colors ${formMode === 'guest' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700/50'}`}
+                >게스트</button>
+                <button
+                  onClick={() => { setFormMode('admin'); setGuestError(''); }}
+                  className={`flex-1 py-1.5 text-[10px] font-bold transition-colors ${formMode === 'admin' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:bg-slate-700/50'}`}
+                >관리자</button>
+              </div>
+
               {guestError && (
                 <p className="text-[10px] text-red-400 font-medium">⚠ {guestError}</p>
               )}
-              <input
-                type="text"
-                placeholder="이름"
-                value={guestName}
-                onChange={e => { setGuestName(e.target.value); setGuestError(''); }}
-                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
-                onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
-                autoFocus
-              />
-              <input
-                type="text"
-                placeholder="초대코드"
-                value={inviteCode}
-                onChange={e => { setInviteCode(e.target.value); setGuestError(''); }}
-                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 tracking-widest"
-                onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
-              />
+
+              {formMode === 'guest' ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder="이름"
+                    value={guestName}
+                    onChange={e => { setGuestName(e.target.value); setGuestError(''); }}
+                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    placeholder="초대코드"
+                    value={inviteCode}
+                    onChange={e => { setInviteCode(e.target.value); setGuestError(''); }}
+                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 tracking-widest"
+                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+                  />
+                </>
+              ) : (
+                <>
+                  <input
+                    type="email"
+                    placeholder="이메일"
+                    value={adminEmail}
+                    onChange={e => { setAdminEmail(e.target.value); setGuestError(''); }}
+                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+                    autoFocus
+                  />
+                  <input
+                    type="password"
+                    placeholder="비밀번호"
+                    value={adminPw}
+                    onChange={e => { setAdminPw(e.target.value); setGuestError(''); }}
+                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+                  />
+                </>
+              )}
+
               <div className="flex gap-2 mt-1">
                 <button
-                  onClick={() => { setShowGuestForm(false); setGuestName(''); setInviteCode(''); setGuestError(''); }}
+                  onClick={() => { setShowGuestForm(false); setGuestName(''); setInviteCode(''); setAdminEmail(''); setAdminPw(''); setGuestError(''); }}
                   className="flex-1 py-2 text-xs text-slate-400 border border-slate-700 rounded-lg hover:bg-slate-700/30 transition-colors"
                 >취소</button>
                 <button

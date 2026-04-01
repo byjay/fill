@@ -171,29 +171,36 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     naver.go_login(); // Naver OAuth 페이지로 리다이렉트
   };
 
-  // ── 게스트 / 관리자 로그인 ──────────────────────────────
+  // ── 게스트 (이름 + 초대코드) / 관리자 (숨김) 로그인 ──────────────────────────────
   const [showGuestForm, setShowGuestForm] = useState(false);
-  const [guestId, setGuestId] = useState('');
-  const [guestPw, setGuestPw] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [guestError, setGuestError] = useState('');
 
-  const GUEST_ACCOUNTS: Record<string, { pw: string; name: string; uid: string }> = {
-    'guest':  { pw: 'guest',  name: '게스트',    uid: 'guest_user' },
-    'admin':  { pw: '2239',   name: '관리자',    uid: 'admin_user' },
+  // 초대코드 → 권한 레벨: 'guest' = 일반, 'admin' = 관리자
+  const INVITE_CODES: Record<string, { role: 'guest' | 'admin'; uid: string }> = {
+    'SEASTAR2025': { role: 'guest', uid: '' }, // uid는 이름 기반으로 생성
+    'ADMIN2239':   { role: 'admin', uid: 'admin_user' },
   };
 
   const handleGuestLogin = () => {
-    const acc = GUEST_ACCOUNTS[guestId.toLowerCase()];
-    if (!acc) {
-      setGuestError('존재하지 않는 계정입니다.');
+    if (!guestName.trim()) {
+      setGuestError('이름을 입력해 주세요.');
       return;
     }
-    if (acc.pw !== guestPw) {
-      setGuestError('비밀번호가 틀렸습니다.');
+    const entry = INVITE_CODES[inviteCode.trim().toUpperCase()];
+    if (!entry) {
+      setGuestError('초대코드가 올바르지 않습니다.');
       return;
     }
     setGuestError('');
-    onLogin({ name: acc.name, email: `${guestId}@scms.local`, provider: 'local', uid: acc.uid });
+    const uid = entry.role === 'admin' ? 'admin_user' : `guest_${guestName.trim().replace(/\s+/g, '_').toLowerCase()}`;
+    onLogin({
+      name: guestName.trim(),
+      email: `${uid}@scms.local`,
+      provider: 'local',
+      uid,
+    });
   };
 
   return (
@@ -304,41 +311,41 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <div className="flex-1 h-px bg-slate-700/60" />
           </div>
 
-          {/* ── 게스트 / 관리자 로그인 ── */}
+          {/* ── 게스트 로그인 (초대코드) ── */}
           {!showGuestForm ? (
             <button
               onClick={() => setShowGuestForm(true)}
               disabled={loading !== null}
               className="w-full py-3 rounded-xl text-slate-400 hover:text-white text-xs font-semibold border border-slate-700/50 hover:border-slate-500 bg-transparent hover:bg-slate-700/30 transition-all disabled:opacity-50"
             >
-              🔑 게스트 / 관리자 로그인
+              🔑 초대코드로 입장
             </button>
           ) : (
             <div className="rounded-xl border border-slate-600/50 bg-slate-800/50 p-4 flex flex-col gap-2">
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">ID / Password 입력</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">이름 &amp; 초대코드 입력</p>
               {guestError && (
                 <p className="text-[10px] text-red-400 font-medium">⚠ {guestError}</p>
               )}
               <input
                 type="text"
-                placeholder="ID  (guest / admin)"
-                value={guestId}
-                onChange={e => { setGuestId(e.target.value); setGuestError(''); }}
+                placeholder="이름"
+                value={guestName}
+                onChange={e => { setGuestName(e.target.value); setGuestError(''); }}
                 className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
                 onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
                 autoFocus
               />
               <input
-                type="password"
-                placeholder="Password"
-                value={guestPw}
-                onChange={e => { setGuestPw(e.target.value); setGuestError(''); }}
-                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                type="text"
+                placeholder="초대코드"
+                value={inviteCode}
+                onChange={e => { setInviteCode(e.target.value); setGuestError(''); }}
+                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 tracking-widest"
                 onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
               />
               <div className="flex gap-2 mt-1">
                 <button
-                  onClick={() => { setShowGuestForm(false); setGuestId(''); setGuestPw(''); setGuestError(''); }}
+                  onClick={() => { setShowGuestForm(false); setGuestName(''); setInviteCode(''); setGuestError(''); }}
                   className="flex-1 py-2 text-xs text-slate-400 border border-slate-700 rounded-lg hover:bg-slate-700/30 transition-colors"
                 >취소</button>
                 <button
@@ -346,9 +353,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   className="flex-1 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                 >입장</button>
               </div>
-              <p className="text-[9px] text-slate-600 text-center mt-0.5">
-                guest / guest &nbsp;·&nbsp; admin / ****
-              </p>
             </div>
           )}
           <div className="mb-2" />

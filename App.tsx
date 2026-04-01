@@ -986,36 +986,10 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
           )}
         </div>
 
-        {/* Center: dropdown tab navigation */}
-        <div className="relative">
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors"
-          >
-            {activeTabObj?.icon}
-            <span>{activeTabObj?.label}</span>
-            <ChevronDown
-              size={12}
-              className={`transition-transform ${menuOpen ? 'rotate-180' : ''}`}
-            />
-          </button>
-          {menuOpen && (
-            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl py-1 min-w-[180px] z-50">
-              {TABS.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold transition-colors ${
-                    activeTab === tab.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-700'
-                  }`}
-                >
-                  {tab.icon} {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Center: current tab indicator */}
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
+          {activeTabObj?.icon}
+          <span>{activeTabObj?.label}</span>
         </div>
 
         {/* Right: undo/redo + stats + back + logout */}
@@ -1078,6 +1052,27 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
 
       {/* ── Body ── */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Left tab navigation */}
+        <nav className="bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20" style={{ width: 64 }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              title={tab.label}
+              className={`flex flex-col items-center justify-center gap-1 py-3 px-1 text-[8px] font-bold transition-colors border-l-2 ${
+                activeTab === tab.id
+                  ? 'border-blue-500 bg-slate-800 text-blue-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              {tab.icon}
+              <span className="leading-tight text-center" style={{ fontSize: 8, lineHeight: '1.1' }}>
+                {tab.label.replace(' ', '\n')}
+              </span>
+            </button>
+          ))}
+        </nav>
+
         {/* Sidebar */}
         <ProjectSidebar
           onCalculateAllPaths={handleCalculateAllPaths}
@@ -1132,13 +1127,7 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
         </main>
       </div>
 
-      {/* Click-outside overlays for dropdown menus */}
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setMenuOpen(false)}
-        />
-      )}
+      {/* Click-outside overlay for project switcher */}
       {switcherOpen && (
         <div
           className="fixed inset-0 z-40"

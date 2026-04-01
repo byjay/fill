@@ -588,6 +588,10 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   // ── Project switcher dropdown ──────────────────────────────────────────────
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
+  // ── 경로 계산 로딩 오버레이 ───────────────────────────────────────────────────
+  const [isRouting, setIsRouting] = useState(false);
+  const [routingProgress, setRoutingProgress] = useState({ done: 0, total: 0 });
+
   // ── Tray Fill 사전 계산 ────────────────────────────────────────────────────
   const [trayFillSummary, setTrayFillSummary] = useState<TrayFillSummary | undefined>(undefined);
   const [isTrayFillCalculating, setIsTrayFillCalculating] = useState(false);
@@ -771,19 +775,33 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
       return;
     }
     pushUndo(cables, nodes);
-    const newData = cables.map(cable => {
-      if (cable.fromNode && cable.toNode) {
-        const result = calculatePath(cable.fromNode, cable.toNode, cable.checkNode);
-        if (result) {
-          return {
-            ...cable,
-            calculatedPath: result.path.join(','),
-            calculatedLength: result.length + (cable.fromRest || 0) + (cable.toRest || 0),
-          };
+    setIsRouting(true);
+    setRoutingProgress({ done: 0, total: cables.length });
+
+    // 청크 단위 처리 — UI 스레드 블로킹 방지
+    const CHUNK = 100;
+    const newData = [...cables];
+    for (let i = 0; i < cables.length; i += CHUNK) {
+      const end = Math.min(i + CHUNK, cables.length);
+      for (let j = i; j < end; j++) {
+        const cable = cables[j];
+        if (cable.fromNode && cable.toNode) {
+          const result = calculatePath(cable.fromNode, cable.toNode, cable.checkNode);
+          if (result) {
+            newData[j] = {
+              ...cable,
+              calculatedPath: result.path.join(','),
+              calculatedLength: result.length + (cable.fromRest || 0) + (cable.toRest || 0),
+            };
+          }
         }
       }
-      return cable;
-    });
+      setRoutingProgress({ done: end, total: cables.length });
+      // UI 업데이트 yield
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    setIsRouting(false);
     await updateCables(newData, '전체 경로 계산');
   }, [cables, nodes, calculatePath, updateCables, pushUndo]);
 
@@ -944,6 +962,62 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex flex-col h-screen overflow-hidden">
+
+      {/* ── 경로 계산 로딩 오버레이 ── */}
+      {isRouting && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-sm">
+          {/* 배경 비디오 */}
+          <video
+            autoPlay loop muted playsInline
+            className="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none"
+          >
+            <source src="/scms.mp4" type="video/mp4" />
+          </video>
+
+          <div className="relative z-10 flex flex-col items-center gap-6 px-8 py-10 bg-slate-900/80 rounded-2xl border border-slate-700/50 shadow-2xl backdrop-blur min-w-[320px]">
+            {/* 스피너 */}
+            <div className="relative">
+              <div className="w-20 h-20 border-4 border-slate-700 rounded-full" />
+              <div className="absolute inset-0 w-20 h-20 border-4 border-t-blue-500 border-r-blue-400 border-transparent rounded-full animate-spin" />
+              <div className="absolute inset-3 w-14 h-14 border-4 border-t-transparent border-b-emerald-500 border-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
+            </div>
+
+            {/* 텍스트 */}
+            <div className="text-center">
+              <p className="text-white font-black text-lg tracking-wide">경로 계산 중</p>
+              <p className="text-slate-400 text-xs mt-1 font-mono">Dijkstra Algorithm Running...</p>
+            </div>
+
+            {/* 진행바 */}
+            <div className="w-full">
+              <div className="flex justify-between text-[10px] text-slate-400 mb-1.5 font-mono">
+                <span>{routingProgress.done.toLocaleString()} / {routingProgress.total.toLocaleString()} cables</span>
+                <span className="text-blue-400 font-bold">
+                  {routingProgress.total > 0
+                    ? Math.round((routingProgress.done / routingProgress.total) * 100)
+                    : 0}%
+                </span>
+              </div>
+              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-600 to-emerald-500 rounded-full transition-all duration-200"
+                  style={{
+                    width: routingProgress.total > 0
+                      ? `${(routingProgress.done / routingProgress.total) * 100}%`
+                      : '0%'
+                  }}
+                />
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 text-center">
+              케이블 수에 따라 수 초~수십 초 소요됩니다<br />
+              화면이 멈추지 않고 계속 업데이트됩니다
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Compact Header (40-44px) ── */}
       <header
         className="bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between shrink-0 shadow-md z-30"

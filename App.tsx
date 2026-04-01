@@ -786,6 +786,30 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
     [cables, nodes, calculatePath, updateCables, pushUndo]
   );
 
+  const handleCableEdit = useCallback(async (index: number, updated: Partial<CableData>) => {
+    pushUndo(cables, nodes);
+    const newData = [...cables];
+    newData[index] = { ...newData[index], ...updated };
+    await updateCables(newData, '케이블 인라인 편집');
+  }, [cables, nodes, updateCables, pushUndo]);
+
+  const handleRouteSingle = useCallback(async (index: number) => {
+    pushUndo(cables, nodes);
+    const newData = [...cables];
+    const cable = newData[index];
+    if (cable.fromNode && cable.toNode) {
+      const result = calculatePath(cable.fromNode, cable.toNode, cable.checkNode);
+      if (result) {
+        newData[index] = {
+          ...cable,
+          calculatedPath: result.path.join(','),
+          calculatedLength: result.length + (cable.fromRest || 0) + (cable.toRest || 0),
+        };
+        await updateCables(newData, `${cable.name} 경로 계산`);
+      }
+    }
+  }, [cables, nodes, calculatePath, updateCables, pushUndo]);
+
   const handleUpdateCheckNode = useCallback(
     async (index: number, checkNode: string) => {
       pushUndo(cables, nodes);
@@ -1077,6 +1101,8 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
                 cableData={cables}
                 onCalculateAllPaths={handleCalculateAllPaths}
                 onExportCableList={handleExportCableList}
+                onCableEdit={handleCableEdit}
+                onRouteSingle={handleRouteSingle}
               />
             )}
             {activeTab === 'nodes' && (

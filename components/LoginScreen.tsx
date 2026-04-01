@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { signInWithGoogle } from '../services/firebase';
 
 interface LoginScreenProps {
@@ -383,9 +383,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       <div className="absolute bottom-5 w-full text-center z-20 space-y-1 pointer-events-none">
         <p className="text-[10px] text-slate-500 font-mono tracking-wider">SECURE CONNECTION ESTABLISHED</p>
         <p className="text-[10px] text-slate-600">© 2025 SEASTAR Corp. All rights reserved.</p>
-        {!hasCredentials && (
+        {!NAVER_CLIENT_ID && !KAKAO_APP_KEY && (
           <p className="text-[9px] text-amber-600/70 mt-1">
-            ⚙ OAuth 미설정 — Cloudflare Pages 환경변수에 VITE_GOOGLE_CLIENT_ID 등을 설정하세요
+            ⚙ OAuth 미설정 — Cloudflare Pages 환경변수에 VITE_NAVER_CLIENT_ID 등을 설정하세요
           </p>
         )}
       </div>

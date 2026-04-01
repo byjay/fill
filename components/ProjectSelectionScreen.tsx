@@ -18,11 +18,16 @@ export default function ProjectSelectionScreen({ userName, onLogout }: Props) {
   const handleCreate = async () => {
     if (!vesselName.trim()) return;
     setCreating(true);
-    await createProject(vesselName.trim(), vesselNo.trim());
-    setCreating(false);
-    setShowCreate(false);
-    setVesselName('');
-    setVesselNo('');
+    try {
+      await createProject(vesselName.trim(), vesselNo.trim());
+      setShowCreate(false);
+      setVesselName('');
+      setVesselNo('');
+    } catch (err) {
+      console.warn('프로젝트 생성 실패:', err);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleDelete = async (id: string) => {

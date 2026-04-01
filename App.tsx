@@ -11,6 +11,7 @@ import ThreeDViewTab from './components/ThreeDViewTab';
 import RoutingTab from './components/RoutingTab';
 import TrayFillTab from './components/TrayFillTab';
 import BOMTab from './components/BOMTab';
+import AnalysisTab from './components/AnalysisTab';
 import {
   LayoutDashboard,
   List,
@@ -40,7 +41,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AppScreen = 'login' | 'projects' | 'main';
-type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'history';
+type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history';
 
 interface Snapshot {
   cables: CableData[];
@@ -558,6 +559,7 @@ const TABS = [
   { id: 'routing' as TabType, label: 'Routing', icon: <Map size={14} /> },
   { id: 'trayfill' as TabType, label: 'Tray Fill', icon: <Layers size={14} /> },
   { id: '3d' as TabType, label: '3D View', icon: <BoxIcon size={14} /> },
+  { id: 'analysis' as TabType, label: 'Analysis', icon: <Activity size={14} /> },
   { id: 'history' as TabType, label: 'History', icon: <History size={14} /> },
 ] as const;
 
@@ -1095,6 +1097,9 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
             {activeTab === 'trayfill' && <TrayFillTab cableData={cables} />}
             {activeTab === '3d' && (
               <ThreeDViewTab cableData={cables} nodeData={nodes} />
+            )}
+            {activeTab === 'analysis' && (
+              <AnalysisTab cableData={cables} nodeData={nodes} />
             )}
             {activeTab === 'history' && <HistoryTab />}
           </div>

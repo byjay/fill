@@ -214,17 +214,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         style={{ animation: 'fadeInUp 0.35s ease' }}>
 
         {/* ── HEADER: LOGO ── */}
-        <div className="w-full py-8 text-center relative bg-slate-900/60 flex flex-col items-center gap-2">
-          <div className="w-full px-12 h-24 flex items-center justify-center">
+        <div className="w-full py-6 text-center relative bg-slate-900/60 flex flex-col items-center gap-2">
+          <div className="w-full px-6 flex items-center justify-center gap-4">
             <img
               src="/logo.jpg"
               alt="SEASTAR"
-              className="max-h-full max-w-full object-contain drop-shadow-lg"
+              className="h-16 object-contain drop-shadow-lg"
+            />
+            <div className="w-px h-10 bg-slate-600/60" />
+            <img
+              src="/scms_logo.png"
+              alt="SCMS"
+              className="h-16 object-contain drop-shadow-lg"
             />
           </div>
-          <p className="text-[10px] font-bold text-slate-400 tracking-[0.28em] uppercase mt-1">
-            Seastar Cable Management System
-          </p>
           <div className="text-[9px] text-slate-600 font-mono">v{BUILD_VERSION}</div>
         </div>
 

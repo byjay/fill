@@ -354,19 +354,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
           {/* ── VIDEO (카드 하단 embedded) ── */}
           <div className="-mx-10 h-[120px] relative overflow-hidden group flex-shrink-0">
-            {!isMobile ? (
-              <video
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-cover opacity-60 transition-opacity duration-700 group-hover:opacity-80"
-              >
-                <source src="/scms.mp4" type="video/mp4" />
-              </video>
-            ) : (
-              <div className="w-full h-full bg-blue-900/40" />
-            )}
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover opacity-60 transition-opacity duration-700 group-hover:opacity-80"
+            >
+              <source src="/scms.mp4" type="video/mp4" />
+            </video>
             {/* 그라디언트 오버레이 */}
             <div className="absolute inset-0 bg-gradient-to-t from-[#1e293b] via-transparent to-transparent" />
             <div className="absolute inset-x-0 bottom-3 flex flex-col items-center opacity-40 pointer-events-none">

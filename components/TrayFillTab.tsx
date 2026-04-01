@@ -37,7 +37,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     cableData.forEach(cable => {
       const pathStr = cable.calculatedPath || cable.path;
       if (pathStr) {
-        const nodes = pathStr.split(/,|→/).map(n => n.trim()).filter(n => n);
+        const nodes = pathStr.split(/[,→>]/).map(n => n.trim()).filter(n => n);
         const uniqueInCable = new Set<string>(nodes);
         uniqueInCable.forEach(n => {
           stats[n] = (stats[n] || 0) + 1;
@@ -62,7 +62,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     return cableData.filter(c => {
       const pathStr = c.calculatedPath || c.path;
       if (!pathStr) return false;
-      return pathStr.split(/,|→/).map(n => n.trim()).includes(selectedNode);
+      return pathStr.split(/[,→>]/).map(n => n.trim()).includes(selectedNode);
     });
   }, [cableData, selectedNode]);
 

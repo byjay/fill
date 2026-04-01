@@ -3,6 +3,8 @@
  * GET    → 특정 프로젝트 조회
  * PUT    → 프로젝트 업데이트 (cables, nodes, history)
  * DELETE → 프로젝트 삭제
+ *
+ * admin_user는 모든 프로젝트에 접근 가능
  */
 
 interface Env {
@@ -37,12 +39,15 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
 
   const id = params.id as string;
   const db = env.scms_db;
+  const isAdmin = userId === 'admin_user';
 
   // ── GET ──────────────────────────────────
   if (request.method === 'GET') {
     const row = await db
-      .prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?')
-      .bind(id, userId)
+      .prepare(isAdmin
+        ? 'SELECT * FROM projects WHERE id = ?'
+        : 'SELECT * FROM projects WHERE id = ? AND user_id = ?')
+      .bind(...(isAdmin ? [id] : [id, userId]))
       .first() as any;
 
     if (!row) return json({ error: 'Not found' }, 404);
@@ -69,16 +74,16 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
     const history = (body.history || []).slice(0, 200);
 
     await db
-      .prepare(`UPDATE projects
-                SET cables_json = ?, nodes_json = ?, history_json = ?, updated_at = ?
-                WHERE id = ? AND user_id = ?`)
+      .prepare(isAdmin
+        ? `UPDATE projects SET cables_json = ?, nodes_json = ?, history_json = ?, updated_at = ? WHERE id = ?`
+        : `UPDATE projects SET cables_json = ?, nodes_json = ?, history_json = ?, updated_at = ? WHERE id = ? AND user_id = ?`)
       .bind(
         JSON.stringify(body.cables || []),
         JSON.stringify(body.nodes || []),
         JSON.stringify(history),
         now,
         id,
-        userId,
+        ...(isAdmin ? [] : [userId]),
       )
       .run();
 
@@ -88,8 +93,10 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
   // ── DELETE ──────────────────────────────────
   if (request.method === 'DELETE') {
     await db
-      .prepare('DELETE FROM projects WHERE id = ? AND user_id = ?')
-      .bind(id, userId)
+      .prepare(isAdmin
+        ? 'DELETE FROM projects WHERE id = ?'
+        : 'DELETE FROM projects WHERE id = ? AND user_id = ?')
+      .bind(...(isAdmin ? [id] : [id, userId]))
       .run();
 
     return json({ success: true });

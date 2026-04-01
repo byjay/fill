@@ -12,6 +12,7 @@ import RoutingTab from './components/RoutingTab';
 import TrayFillTab from './components/TrayFillTab';
 import BOMTab from './components/BOMTab';
 import AnalysisTab from './components/AnalysisTab';
+import ProjectTab from './components/ProjectTab';
 import {
   LayoutDashboard,
   List,
@@ -41,7 +42,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AppScreen = 'login' | 'projects' | 'main';
-type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history';
+type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history' | 'project';
 
 interface Snapshot {
   cables: CableData[];
@@ -561,6 +562,7 @@ const TABS = [
   { id: '3d' as TabType, label: '3D View', icon: <BoxIcon size={14} /> },
   { id: 'analysis' as TabType, label: 'Analysis', icon: <Activity size={14} /> },
   { id: 'history' as TabType, label: 'History', icon: <History size={14} /> },
+  { id: 'project' as TabType, label: 'Project', icon: <FolderOpen size={14} /> },
 ] as const;
 
 interface MainAppProps {
@@ -1123,6 +1125,13 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
               <AnalysisTab cableData={cables} nodeData={nodes} />
             )}
             {activeTab === 'history' && <HistoryTab />}
+            {activeTab === 'project' && (
+              <ProjectTab
+                onExportCableList={handleExportCableList}
+                onExportNodeInfo={handleExportNodeInfo}
+                onJsonSave={handleJsonSave}
+              />
+            )}
           </div>
         </main>
       </div>

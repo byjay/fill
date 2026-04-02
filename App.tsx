@@ -1512,10 +1512,18 @@ const AppRouter: React.FC = () => {
     }
   }, [currentProjectId, screen]);
 
+  const ADMIN_EMAIL_CHECK = 'designssir@gmail.com';
+
   const handleLogin = useCallback((userInfo?: { name: string; email: string; provider: string; uid?: string }) => {
-    // Firebase uid를 우선 사용 (D1 API 인증 키로 활용)
+    // 관리자 Google 계정 → session.id를 'admin_user'로 고정 (D1의 admin 체크와 일치)
+    const isAdminGoogle =
+      userInfo?.provider === 'google' &&
+      userInfo?.email?.toLowerCase() === ADMIN_EMAIL_CHECK.toLowerCase();
+
     const info: UserInfo = {
-      id: userInfo?.uid || userInfo?.email || `${userInfo?.provider || 'demo'}_${Date.now()}`,
+      id: isAdminGoogle
+        ? 'admin_user'
+        : (userInfo?.uid || userInfo?.email || `${userInfo?.provider || 'demo'}_${Date.now()}`),
       name: userInfo?.name || 'SEASTAR 사용자',
       email: userInfo?.email || '',
       provider: userInfo?.provider || 'demo',

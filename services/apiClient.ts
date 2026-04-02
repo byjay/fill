@@ -9,16 +9,8 @@ import type { Project, CableData, NodeData, HistoryEntry, TrayFillSummary } from
 const BASE = '/api';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  // 1) Firebase 인증 사용자(Google) → Firebase ID 토큰 사용
-  const firebaseToken = await getAuthToken();
-  if (firebaseToken) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${firebaseToken}`,
-    };
-  }
-  // 2) 게스트/관리자(로컬 로그인) → localStorage의 userId 사용
-  //    firebase 토큰이 없으면 세션에 저장된 id(guest_xxx / admin_user)를 그대로 Bearer로 전달
+  // 항상 localStorage의 session.id (Firebase UID or guest_xxx) 를 userId로 사용.
+  // Firebase ID 토큰(JWT)은 매 세션마다 갱신되어 userId로 부적합 — session.id는 안정적인 식별자.
   try {
     const raw = localStorage.getItem('scms_user_session');
     if (raw) {

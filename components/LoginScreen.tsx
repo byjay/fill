@@ -269,15 +269,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   // 승인 요청 이메일 전송 (mailto)
   const handleSendApproval = () => {
     if (!approvalName.trim() || !approvalCompany.trim() || !approvalPhone.trim()) return;
-    const subject = encodeURIComponent('[SCMS] 사용 승인 요청');
+    const subject = encodeURIComponent('[SCM] 사용 승인 요청');
     const body = encodeURIComponent(
-      `[SCMS 사용 승인 요청]\n\n` +
+      `[SCM 사용 승인 요청]\n\n` +
       `실명: ${approvalName.trim()}\n` +
       `회사명: ${approvalCompany.trim()}\n` +
       `전화번호: ${approvalPhone.trim()}\n` +
       `이메일: ${pendingGoogleUser?.email || ''}\n` +
       `구글 UID: ${pendingGoogleUser?.uid || ''}\n\n` +
-      `---\nSCMS v${BUILD_VERSION}`
+      `---\nSCM v${BUILD_VERSION}`
     );
     window.open(`mailto:${ADMIN_CONTACT}?subject=${subject}&body=${body}`, '_blank');
     setApprovalSent(true);
@@ -285,7 +285,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
   // 관리자 문의 이메일
   const handleContactAdmin = () => {
-    const subject = encodeURIComponent('[SCMS] 문의');
+    const subject = encodeURIComponent('[SCM] 문의');
     window.open(`mailto:${ADMIN_CONTACT}?subject=${subject}`, '_blank');
   };
 
@@ -417,9 +417,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <div className="flex-1 flex items-center justify-center py-2">
               <img src="/logo.jpg" alt="SEASTAR" className="h-12 object-contain drop-shadow-lg" />
             </div>
-            {/* SCMS 로고 */}
+            {/* SCM 로고 */}
             <div className="flex-1 flex items-center justify-center py-2">
-              <img src="/scms_logo.png" alt="SCMS" className="h-12 object-contain drop-shadow-lg" />
+              <img src="/scms_logo.png" alt="SCM" className="h-12 object-contain drop-shadow-lg" />
             </div>
           </div>
         </div>

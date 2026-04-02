@@ -289,32 +289,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     window.open(`mailto:${ADMIN_CONTACT}?subject=${subject}`, '_blank');
   };
 
-  // ── 게스트 / 관리자 로그인 폼 ────────────────────────────────────
+  // ── 게스트 로그인 폼 (초대코드) ──────────────────────────────────
   const [showGuestForm, setShowGuestForm] = useState(false);
-  const [formMode, setFormMode] = useState<'guest' | 'admin'>('guest');
   const [guestName, setGuestName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPw, setAdminPw] = useState('');
   const [guestError, setGuestError] = useState('');
 
   const GUEST_INVITE_CODE = '0953';
-  const ADMIN_PW = '2239';
 
   const handleGuestLogin = () => {
-    if (formMode === 'admin') {
-      if (adminEmail.trim().toLowerCase() !== ADMIN_EMAIL) {
-        setGuestError('관리자 이메일이 올바르지 않습니다.');
-        return;
-      }
-      if (adminPw !== ADMIN_PW) {
-        setGuestError('비밀번호가 올바르지 않습니다.');
-        return;
-      }
-      setGuestError('');
-      onLogin({ name: '관리자', email: ADMIN_EMAIL, provider: 'local', uid: 'admin_user' });
-      return;
-    }
     if (!guestName.trim()) {
       setGuestError('이름을 입력해 주세요.');
       return;
@@ -431,15 +414,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         <div className="w-full py-4 text-center relative bg-slate-900/60 flex flex-col items-center gap-1">
           <div className="w-full px-5 flex items-center justify-center gap-3">
             {/* SEASTAR 로고 */}
-            <div className="flex-1 flex flex-col items-center justify-center py-2.5 px-2 rounded-xl bg-slate-800/50 border border-slate-700/30">
+            <div className="flex-1 flex items-center justify-center py-2">
               <img src="/logo.jpg" alt="SEASTAR" className="h-12 object-contain drop-shadow-lg" />
             </div>
             {/* SCMS 로고 */}
-            <div className="flex-1 flex flex-col items-center justify-center py-2.5 px-2 rounded-xl bg-slate-800/50 border border-slate-700/30">
+            <div className="flex-1 flex items-center justify-center py-2">
               <img src="/scms_logo.png" alt="SCMS" className="h-12 object-contain drop-shadow-lg" />
             </div>
           </div>
-          <div className="text-[9px] text-slate-600 font-mono">v{BUILD_VERSION}</div>
         </div>
 
         {/* ── BODY ── */}
@@ -470,41 +452,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                 <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
               </svg>
             )}
-            Google로 로그인
-          </button>
-
-          {/* ── KAKAO ── */}
-          <button
-            onClick={handleKakao}
-            disabled={loading !== null}
-            className="w-full flex items-center justify-center gap-3 font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50 text-sm"
-            style={{ backgroundColor: '#FEE500', color: '#191919' }}
-          >
-            {loading === 'kakao' ? (
-              <span className="w-5 h-5 border-2 border-yellow-700 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 48 48">
-                <path fill="#191919" d="M24 4C12.95 4 4 11.16 4 20c0 5.48 3.44 10.31 8.7 13.15l-2.22 8.15c-.18.66.56 1.18 1.14.8l9.62-6.38c.9.1 1.82.15 2.76.15 11.05 0 20-7.16 20-16S35.05 4 24 4z"/>
-              </svg>
-            )}
-            카카오 로그인
-          </button>
-
-          {/* ── NAVER ── */}
-          <button
-            onClick={handleNaver}
-            disabled={loading !== null}
-            className="w-full flex items-center justify-center gap-3 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50 text-sm"
-            style={{ backgroundColor: '#03C75A' }}
-          >
-            {loading === 'naver' ? (
-              <span className="w-5 h-5 border-2 border-green-200 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 48 48">
-                <path fill="white" d="M32.66 25.92L14.67 4H4v40h11.34V22.08L33.33 44H44V4H32.66z"/>
-              </svg>
-            )}
-            네이버 로그인
+            Sign in with Google
           </button>
 
           {/* OR divider */}
@@ -517,7 +465,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           {/* ── 게스트 / 관리자 로그인 ── */}
           {!showGuestForm ? (
             <button
-              onClick={() => { setShowGuestForm(true); setFormMode('guest'); }}
+              onClick={() => setShowGuestForm(true)}
               disabled={loading !== null}
               className="w-full py-2.5 rounded-xl text-slate-400 hover:text-white text-xs font-semibold border border-slate-700/50 hover:border-slate-500 bg-transparent hover:bg-slate-700/30 transition-all disabled:opacity-50"
             >
@@ -525,67 +473,29 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             </button>
           ) : (
             <div className="rounded-xl border border-slate-600/50 bg-slate-800/50 p-4 flex flex-col gap-2">
-              {/* 탭 */}
-              <div className="flex rounded-lg overflow-hidden border border-slate-700 mb-1">
-                <button
-                  onClick={() => { setFormMode('guest'); setGuestError(''); }}
-                  className={`flex-1 py-1.5 text-[10px] font-bold transition-colors ${formMode === 'guest' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700/50'}`}
-                >게스트</button>
-                <button
-                  onClick={() => { setFormMode('admin'); setGuestError(''); }}
-                  className={`flex-1 py-1.5 text-[10px] font-bold transition-colors ${formMode === 'admin' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:bg-slate-700/50'}`}
-                >관리자</button>
-              </div>
-
               {guestError && (
                 <p className="text-[10px] text-red-400 font-medium">⚠ {guestError}</p>
               )}
-
-              {formMode === 'guest' ? (
-                <>
-                  <input
-                    type="text"
-                    placeholder="이름"
-                    value={guestName}
-                    onChange={e => { setGuestName(e.target.value); setGuestError(''); }}
-                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
-                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
-                    autoFocus
-                  />
-                  <input
-                    type="text"
-                    placeholder="초대코드"
-                    value={inviteCode}
-                    onChange={e => { setInviteCode(e.target.value); setGuestError(''); }}
-                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 tracking-widest"
-                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
-                  />
-                </>
-              ) : (
-                <>
-                  <input
-                    type="email"
-                    placeholder="이메일"
-                    value={adminEmail}
-                    onChange={e => { setAdminEmail(e.target.value); setGuestError(''); }}
-                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
-                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
-                    autoFocus
-                  />
-                  <input
-                    type="password"
-                    placeholder="비밀번호"
-                    value={adminPw}
-                    onChange={e => { setAdminPw(e.target.value); setGuestError(''); }}
-                    className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
-                    onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
-                  />
-                </>
-              )}
-
+              <input
+                type="text"
+                placeholder="이름"
+                value={guestName}
+                onChange={e => { setGuestName(e.target.value); setGuestError(''); }}
+                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+                autoFocus
+              />
+              <input
+                type="text"
+                placeholder="초대코드"
+                value={inviteCode}
+                onChange={e => { setInviteCode(e.target.value); setGuestError(''); }}
+                className="w-full bg-slate-900/60 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 tracking-widest"
+                onKeyDown={e => e.key === 'Enter' && handleGuestLogin()}
+              />
               <div className="flex gap-2 mt-1">
                 <button
-                  onClick={() => { setShowGuestForm(false); setGuestName(''); setInviteCode(''); setAdminEmail(''); setAdminPw(''); setGuestError(''); }}
+                  onClick={() => { setShowGuestForm(false); setGuestName(''); setInviteCode(''); setGuestError(''); }}
                   className="flex-1 py-2 text-xs text-slate-400 border border-slate-700 rounded-lg hover:bg-slate-700/30 transition-colors"
                 >취소</button>
                 <button
@@ -596,12 +506,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             </div>
           )}
 
-          {/* 관리자에게 문의하기 */}
+          {/* 관리자 문의 */}
           <button
             onClick={handleContactAdmin}
             className="w-full py-2 rounded-xl text-slate-500 hover:text-blue-400 text-[11px] font-medium border border-slate-800 hover:border-slate-600 bg-transparent hover:bg-slate-800/30 transition-all"
           >
-            📩 관리자에게 문의하기
+            📩 Contact Admin (designsir@naver.com)
           </button>
 
           {/* ── VIDEO (카드 하단 embedded) ── */}
@@ -630,7 +540,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       {/* Footer */}
       <div className="absolute bottom-5 w-full text-center z-20 space-y-1 pointer-events-none">
         <p className="text-[10px] text-slate-500 font-mono tracking-wider">SECURE CONNECTION ESTABLISHED</p>
-        <p className="text-[10px] text-slate-600">© 2025 SEASTAR Corp. All rights reserved.</p>
+        <p className="text-[10px] text-slate-600">© 2023 SEASTAR Corp. All rights reserved.</p>
       </div>
 
       <style>{`

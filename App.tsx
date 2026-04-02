@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { CableData, NodeData, UserInfo, TrayFillSummary } from './types';
+import { CableData, NodeData, UserInfo, TrayFillSummary, CableTypeData } from './types';
 import { calculateTrayFillAPI } from './services/apiClient';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import LoginScreen from './components/LoginScreen';
@@ -14,6 +14,7 @@ import TrayFillTab from './components/TrayFillTab';
 import BOMTab from './components/BOMTab';
 import AnalysisTab from './components/AnalysisTab';
 import ProjectTab from './components/ProjectTab';
+import CableTypeTab from './components/CableTypeTab';
 import {
   LayoutDashboard,
   List,
@@ -36,6 +37,7 @@ import {
   ArrowUpDown,
   FileJson,
   FolderOpen,
+  Table2,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +45,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AppScreen = 'login' | 'projects' | 'main';
-type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history' | 'project';
+type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history' | 'project' | 'cabletype';
 
 interface Snapshot {
   cables: CableData[];
@@ -92,6 +94,11 @@ const NODE_COLUMNS = {
   relation: ['RELATION', 'Relation'],
   linkLength: ['LINK_LENGTH', 'Link Length'],
   areaSize: ['AREA_SIZE', 'Area Size', 'Area'],
+  // 3D 좌표 컬럼
+  x: ['X_COORD', 'X', 'COORD_X', 'POS_X'],
+  y: ['Y_COORD', 'Y', 'COORD_Y', 'POS_Y'],
+  z: ['Z_COORD', 'Z', 'COORD_Z', 'POS_Z'],
+  deck: ['DECK', 'DECK_NO', 'FLOOR'],
 };
 
 function getColumnIndex(headers: string[], possibleNames: string[]) {
@@ -152,15 +159,30 @@ function parseNodeSheet(rawData: unknown[][]): NodeData[] {
   for (const key in NODE_COLUMNS) {
     indices[key] = getColumnIndex(headers, NODE_COLUMNS[key as keyof typeof NODE_COLUMNS]);
   }
-  return rawData.slice(1).map(row => ({
-    name: indices.name >= 0 ? String((row as unknown[])[indices.name] || '') : '',
-    structure: indices.structure >= 0 ? String((row as unknown[])[indices.structure] || '') : '',
-    component: indices.component >= 0 ? String((row as unknown[])[indices.component] || '') : '',
-    type: indices.type >= 0 ? String((row as unknown[])[indices.type] || '') : '',
-    relation: indices.relation >= 0 ? String((row as unknown[])[indices.relation] || '') : '',
-    linkLength: indices.linkLength >= 0 ? safeParseFloat((row as unknown[])[indices.linkLength]) : 0,
-    areaSize: indices.areaSize >= 0 ? safeParseFloat((row as unknown[])[indices.areaSize]) : 0,
-  })).filter(n => n.name);
+  return rawData.slice(1).map(row => {
+    const r = row as unknown[];
+    const parseCoord = (idx: number): number | undefined => {
+      if (idx < 0) return undefined;
+      const v = r[idx];
+      if (v === '' || v === null || v === undefined) return undefined;
+      const parsed = parseFloat(String(v).replace(/[^0-9.-]/g, ''));
+      return isNaN(parsed) ? undefined : parsed;
+    };
+    return {
+      name: indices.name >= 0 ? String(r[indices.name] || '') : '',
+      structure: indices.structure >= 0 ? String(r[indices.structure] || '') : '',
+      component: indices.component >= 0 ? String(r[indices.component] || '') : '',
+      type: indices.type >= 0 ? String(r[indices.type] || '') : '',
+      relation: indices.relation >= 0 ? String(r[indices.relation] || '') : '',
+      linkLength: indices.linkLength >= 0 ? safeParseFloat(r[indices.linkLength]) : 0,
+      areaSize: indices.areaSize >= 0 ? safeParseFloat(r[indices.areaSize]) : 0,
+      // 3D 좌표: 빈 셀은 undefined로 유지 (0 좌표와 구분)
+      x: parseCoord(indices.x),
+      y: parseCoord(indices.y),
+      z: parseCoord(indices.z),
+      deck: indices.deck >= 0 ? (String(r[indices.deck] || '') || undefined) : undefined,
+    };
+  }).filter(n => n.name);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -554,17 +576,184 @@ const HistoryTab: React.FC = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'dashboard' as TabType, label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
-  { id: 'cables' as TabType, label: 'Cable List', icon: <List size={14} /> },
-  { id: 'nodes' as TabType, label: 'Node Info', icon: <Network size={14} /> },
-  { id: 'bom' as TabType, label: 'BOM', icon: <Package size={14} /> },
-  { id: 'routing' as TabType, label: 'Routing', icon: <Map size={14} /> },
-  { id: 'trayfill' as TabType, label: 'Tray Fill', icon: <Layers size={14} /> },
-  { id: '3d' as TabType, label: '3D View', icon: <BoxIcon size={14} /> },
-  { id: 'analysis' as TabType, label: 'Analysis', icon: <Activity size={14} /> },
-  { id: 'history' as TabType, label: 'History', icon: <History size={14} /> },
-  { id: 'project' as TabType, label: 'Project', icon: <FolderOpen size={14} /> },
+  { id: 'dashboard' as TabType, label: 'Dashboard', icon: <LayoutDashboard size={13} /> },
+  { id: 'cables' as TabType, label: 'Cable List', icon: <List size={13} /> },
+  { id: 'nodes' as TabType, label: 'Node Info', icon: <Network size={13} /> },
+  { id: 'bom' as TabType, label: 'BOM', icon: <Package size={13} /> },
+  { id: 'routing' as TabType, label: 'Routing', icon: <Map size={13} /> },
+  { id: 'trayfill' as TabType, label: 'Tray Fill', icon: <Layers size={13} /> },
+  { id: '3d' as TabType, label: '3D View', icon: <BoxIcon size={13} /> },
+  { id: 'analysis' as TabType, label: 'Analysis', icon: <Activity size={13} /> },
+  { id: 'history' as TabType, label: 'History', icon: <History size={13} /> },
+  { id: 'project' as TabType, label: 'Project', icon: <FolderOpen size={13} /> },
+  { id: 'cabletype' as TabType, label: 'Cable Type', icon: <Table2 size={13} /> },
 ] as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TopToolbar — 상단 가로 배치 툴바 (탭 + 파일업로드 + 액션)
+// ─────────────────────────────────────────────────────────────────────────────
+interface TopToolbarProps {
+  activeTab: TabType;
+  onTabChange: (tab: TabType) => void;
+  onCalculateAllPaths: () => void;
+  onExportAllData: () => void;
+  onExportCableList: () => void;
+  onExportNodeInfo: () => void;
+  onJsonSave: () => void;
+  onJsonLoad: (cables: CableData[], nodes: NodeData[]) => void;
+}
+
+const TopToolbar: React.FC<TopToolbarProps> = ({
+  activeTab, onTabChange,
+  onCalculateAllPaths, onExportAllData,
+  onExportCableList, onExportNodeInfo,
+  onJsonSave, onJsonLoad,
+}) => {
+  const { currentProject, updateCablesAndNodes } = useProject();
+  const cables = currentProject?.cables ?? [];
+  const nodes = currentProject?.nodes ?? [];
+
+  const cableFileRef = useRef<HTMLInputElement>(null);
+  const nodeFileRef = useRef<HTMLInputElement>(null);
+  const bothFileRef = useRef<HTMLInputElement>(null);
+  const jsonLoadRef = useRef<HTMLInputElement>(null);
+
+  // Cable Type 마스터에서 OD 자동 매핑 (type 컬럼이 cableTypeData의 cableType과 일치하면 OD 교체)
+  const applyCableTypeOD = useCallback((parsed: CableData[]): CableData[] => {
+    if (cableTypeData.length === 0) return parsed;
+    const typeMap = new Map(cableTypeData.map(t => [t.cableType.trim().toUpperCase(), t.od]));
+    return parsed.map(c => {
+      const key = (c.type || '').trim().toUpperCase();
+      const mappedOD = typeMap.get(key);
+      if (mappedOD && mappedOD > 0) return { ...c, od: mappedOD };
+      return c;
+    });
+  }, [cableTypeData]);
+
+  const readExcelFile = (file: File): Promise<unknown[][]> =>
+    new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const wb = XLSX.read(evt.target?.result, { type: 'binary' });
+        resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false }) as unknown[][]);
+      };
+      reader.readAsBinaryString(file);
+    });
+
+  const handleCableFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const rawData = await readExcelFile(file);
+    await updateCablesAndNodes(applyCableTypeOD(parseCableSheet(rawData)), nodes, `케이블 파일: ${file.name}`);
+    e.target.value = '';
+  };
+
+  const handleNodeFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const rawData = await readExcelFile(file);
+    await updateCablesAndNodes(cables, parseNodeSheet(rawData), `노드 파일: ${file.name}`);
+    e.target.value = '';
+  };
+
+  const handleBothFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async evt => {
+      const wb = XLSX.read(evt.target?.result, { type: 'binary' });
+      let nc = cables, nn = nodes;
+      wb.SheetNames.forEach(sn => {
+        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, blankrows: false }) as unknown[][];
+        const lo = sn.toLowerCase();
+        if (lo.includes('cable') || lo.includes('케이블')) { const p = applyCableTypeOD(parseCableSheet(raw)); if (p.length) nc = p; }
+        else if (lo.includes('node') || lo.includes('노드')) { const p = parseNodeSheet(raw); if (p.length) nn = p; }
+      });
+      await updateCablesAndNodes(nc, nn, `통합 파일: ${file.name}`);
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = '';
+  };
+
+  const handleJsonLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const json = JSON.parse(evt.target?.result as string);
+        onJsonLoad(Array.isArray(json.cables) ? json.cables : [], Array.isArray(json.nodes) ? json.nodes : []);
+      } catch { alert('JSON 파일을 파싱할 수 없습니다.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const btn = (onClick: () => void, label: string, icon: React.ReactNode, cls = '') =>
+    <button onClick={onClick} className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap transition-colors ${cls}`}>{icon}<span>{label}</span></button>;
+
+  return (
+    <div className="bg-slate-900 border-b border-slate-700 flex items-center px-2 shrink-0 gap-0.5 overflow-x-auto" style={{ height: 36 }}>
+      {/* ── 탭 ── */}
+      {TABS.map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => onTabChange(tab.id)}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold whitespace-nowrap transition-colors ${
+            activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          {tab.icon}<span>{tab.label}</span>
+        </button>
+      ))}
+
+      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+
+      {/* ── 파일 업로드 ── */}
+      {btn(() => cableFileRef.current?.click(),
+        cables.length > 0 ? `케이블 ${cables.length}` : '케이블↑',
+        <Upload size={10} className="text-blue-400" />,
+        'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300'
+      )}
+      {btn(() => nodeFileRef.current?.click(),
+        nodes.length > 0 ? `노드 ${nodes.length}` : '노드↑',
+        <Network size={10} className="text-purple-400" />,
+        'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300'
+      )}
+      {btn(() => bothFileRef.current?.click(), '통합↑', <Upload size={10} />,
+        'bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/30 text-blue-300'
+      )}
+
+      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+
+      {/* ── JSON ── */}
+      {btn(onJsonSave, 'JSON↓', <Download size={10} />,
+        'bg-yellow-900/30 hover:bg-yellow-900/50 border border-yellow-700/30 text-yellow-300'
+      )}
+      {btn(() => jsonLoadRef.current?.click(), 'JSON↑', <FolderOpen size={10} />,
+        'bg-yellow-900/30 hover:bg-yellow-900/50 border border-yellow-700/30 text-yellow-300'
+      )}
+
+      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+
+      {/* ── 액션 ── */}
+      {btn(onCalculateAllPaths, '전체 경로 계산', <Activity size={10} />,
+        'bg-blue-600 hover:bg-blue-700 text-white'
+      )}
+      {btn(onExportCableList, '케이블↓', <Download size={10} />,
+        'bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300'
+      )}
+      {btn(onExportNodeInfo, '노드↓', <Download size={10} />,
+        'bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300'
+      )}
+      {btn(onExportAllData, 'JSON 전체↓', <Download size={10} />,
+        'bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300'
+      )}
+
+      {/* ── Hidden inputs ── */}
+      <input type="file" ref={cableFileRef} onChange={handleCableFileUpload} accept=".xlsx,.xls,.csv" className="hidden" />
+      <input type="file" ref={nodeFileRef} onChange={handleNodeFileUpload} accept=".xlsx,.xls,.csv" className="hidden" />
+      <input type="file" ref={bothFileRef} onChange={handleBothFileUpload} accept=".xlsx,.xls" className="hidden" />
+      <input type="file" ref={jsonLoadRef} onChange={handleJsonLoadFile} accept=".json" className="hidden" />
+    </div>
+  );
+};
 
 interface MainAppProps {
   onBackToProjects: () => void;
@@ -580,6 +769,19 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // ── Cable Type 마스터 데이터 (프로젝트 독립 — localStorage 유지) ───────────
+  const [cableTypeData, setCableTypeData] = useState<CableTypeData[]>(() => {
+    try {
+      const saved = localStorage.getItem('scms_cable_type_data');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const handleCableTypeDataChange = useCallback((data: CableTypeData[]) => {
+    setCableTypeData(data);
+    try { localStorage.setItem('scms_cable_type_data', JSON.stringify(data)); } catch { /* quota */ }
+  }, []);
 
   // ── Undo / Redo stacks ─────────────────────────────────────────────────────
   const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
@@ -909,29 +1111,60 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   }, [cables, nodes, currentProject]);
 
   const handleExportCableList = useCallback(() => {
-    const csvRows = [
-      'CABLE_SYSTEM,WD_PAGE,CABLE_NAME,CABLE_TYPE,FROM_ROOM,FROM_EQUIP,FROM_NODE,FROM_REST,TO_ROOM,TO_EQUIP,TO_NODE,TO_REST,TOTAL_LENGTH,CABLE_PATH,CABLE_OUTDIA,CHECK_NODE,SUPPLY_DECK,POR_WEIGHT,REMARK,REVISION',
+    const wb = XLSX.utils.book_new();
+
+    // ── Sheet 1: CABLE LIST (전체) ─────────────────────────────────────────
+    const headers = [
+      'CABLE_SYSTEM', 'WD_PAGE', 'CABLE_NAME', 'CABLE_TYPE',
+      'FROM_ROOM', 'FROM_EQUIP', 'FROM_NODE', 'FROM_REST',
+      'TO_ROOM', 'TO_EQUIP', 'TO_NODE', 'TO_REST',
+      'TOTAL_LENGTH', 'CABLE_PATH', 'CABLE_OUTDIA',
+      'CHECK_NODE', 'SUPPLY_DECK', 'POR_WEIGHT', 'REMARK', 'REVISION',
     ];
+    const rows: (string | number)[][] = [headers];
     cables.forEach(cable => {
       const length = cable.calculatedLength || cable.length || 0;
       const path = cable.calculatedPath || cable.path || '';
-      csvRows.push(
-        `"${cable.system}","${cable.wdPage || ''}","${cable.name}","${cable.type}","${cable.fromRoom || ''}","${cable.fromEquip || ''}","${cable.fromNode}",${cable.fromRest || 0},"${cable.toRoom || ''}","${cable.toEquip || ''}","${cable.toNode}",${cable.toRest || 0},${length.toFixed(1)},"${path}",${cable.od || 0},"${cable.checkNode || ''}","${cable.supplyDeck || ''}",${cable.porWeight || 0},"${cable.remark || ''}","${cable.revision || ''}"`
-      );
+      rows.push([
+        cable.system || '', cable.wdPage || '', cable.name, cable.type,
+        cable.fromRoom || '', cable.fromEquip || '', cable.fromNode, cable.fromRest || 0,
+        cable.toRoom || '', cable.toEquip || '', cable.toNode, cable.toRest || 0,
+        +length.toFixed(1), path, cable.od || 0,
+        cable.checkNode || '', cable.supplyDeck || '', cable.porWeight || 0,
+        cable.remark || '', cable.revision || '',
+      ]);
     });
-    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `seastar_${currentProject?.vesselNo || 'export'}_cables.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const wsCables = XLSX.utils.aoa_to_sheet(rows);
+    // 열 너비 자동 조정
+    wsCables['!cols'] = [
+      { wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 18 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 8 },
+      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 8 },
+      { wch: 12 }, { wch: 40 }, { wch: 10 },
+      { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 8 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsCables, 'CABLE_LIST');
+
+    // ── Sheet 2: BY_SYSTEM 요약 ────────────────────────────────────────────
+    const sysMap: Record<string, { qty: number; len: number }> = {};
+    cables.forEach(c => {
+      const s = c.system || 'N/A';
+      if (!sysMap[s]) sysMap[s] = { qty: 0, len: 0 };
+      sysMap[s].qty += 1;
+      sysMap[s].len += c.calculatedLength || c.length || 0;
+    });
+    const sysRows: (string | number)[][] = [['No', 'System', 'Cable Count', 'Total Length (m)']];
+    Object.entries(sysMap).sort((a, b) => a[0].localeCompare(b[0])).forEach(([s, v], i) => {
+      sysRows.push([i + 1, s, v.qty, +v.len.toFixed(1)]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sysRows), 'BY_SYSTEM');
+
+    XLSX.writeFile(wb, `seastar_${currentProject?.vesselNo || 'export'}_cables.xlsx`);
   }, [cables, currentProject]);
 
   const handleExportNodeInfo = useCallback(() => {
-    const csvRows = ['NODE_NAME,STRUCTURE_NAME,NODE_TYPE,RELATION,LINK_LENGTH,AREA_SIZE,CONNECTED_CABLES'];
+    const wb = XLSX.utils.book_new();
+
     const cableCounts: Record<string, number> = {};
     cables.forEach(c => {
       if (c.fromNode) cableCounts[c.fromNode] = (cableCounts[c.fromNode] || 0) + 1;
@@ -939,21 +1172,24 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
         cableCounts[c.toNode] = (cableCounts[c.toNode] || 0) + 1;
       }
     });
-    nodes.forEach(node => {
-      const connectedCables = cableCounts[node.name] || 0;
-      csvRows.push(
-        `${node.name},${node.structure || ''},${node.type || ''},${node.relation || ''},${node.linkLength || 0},${node.areaSize || 0},${connectedCables}`
-      );
+    const nodeRows: (string | number)[][] = [
+      ['No', 'NODE_NAME', 'STRUCTURE', 'TYPE', 'RELATION', 'LINK_LENGTH', 'AREA_SIZE', 'CONNECTED_CABLES'],
+    ];
+    nodes.forEach((node, i) => {
+      nodeRows.push([
+        i + 1, node.name, node.structure || '', node.type || '',
+        node.relation || '', node.linkLength || 0, node.areaSize || 0,
+        cableCounts[node.name] || 0,
+      ]);
     });
-    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `seastar_${currentProject?.vesselNo || 'export'}_nodes.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const wsNodes = XLSX.utils.aoa_to_sheet(nodeRows);
+    wsNodes['!cols'] = [
+      { wch: 5 }, { wch: 20 }, { wch: 18 }, { wch: 12 },
+      { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 16 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsNodes, 'NODE_LIST');
+
+    XLSX.writeFile(wb, `seastar_${currentProject?.vesselNo || 'export'}_nodes.xlsx`);
   }, [cables, nodes, currentProject]);
 
   // ── Active tab ─────────────────────────────────────────────────────────────
@@ -1083,12 +1319,6 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
           )}
         </div>
 
-        {/* Center: current tab indicator */}
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
-          {activeTabObj?.icon}
-          <span>{activeTabObj?.label}</span>
-        </div>
-
         {/* Right: undo/redo + stats + back + logout */}
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Undo button */}
@@ -1147,43 +1377,22 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
         </div>
       </header>
 
-      {/* ── Body ── */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left tab navigation */}
-        <nav className="bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20" style={{ width: 64 }}>
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              title={tab.label}
-              className={`flex flex-col items-center justify-center gap-1 py-3 px-1 text-[8px] font-bold transition-colors border-l-2 ${
-                activeTab === tab.id
-                  ? 'border-blue-500 bg-slate-800 text-blue-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              {tab.icon}
-              <span className="leading-tight text-center" style={{ fontSize: 8, lineHeight: '1.1' }}>
-                {tab.label.replace(' ', '\n')}
-              </span>
-            </button>
-          ))}
-        </nav>
+      {/* ── Top Toolbar (탭 + 파일업로드 + 액션) ── */}
+      <TopToolbar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onCalculateAllPaths={handleCalculateAllPaths}
+        onExportAllData={handleExportAllData}
+        onExportCableList={handleExportCableList}
+        onExportNodeInfo={handleExportNodeInfo}
+        onJsonSave={handleJsonSave}
+        onJsonLoad={handleJsonLoad}
+      />
 
-        {/* Sidebar */}
-        <ProjectSidebar
-          onCalculateAllPaths={handleCalculateAllPaths}
-          onExportAllData={handleExportAllData}
-          onExportCableList={handleExportCableList}
-          onExportNodeInfo={handleExportNodeInfo}
-          onJsonSave={handleJsonSave}
-          onJsonLoad={handleJsonLoad}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(v => !v)}
-        />
-
+      {/* ── Body (사이드바/좌측nav 제거 → 전체폭) ── */}
+      <div className="flex-1 overflow-hidden">
         {/* Main content */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
+        <main className="h-full flex flex-col overflow-hidden bg-slate-950">
           <div className="flex-1 overflow-hidden flex flex-col">
             {activeTab === 'dashboard' && (
               <DashboardTab cableData={cables} nodeData={nodes} />
@@ -1232,6 +1441,12 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
                 onExportCableList={handleExportCableList}
                 onExportNodeInfo={handleExportNodeInfo}
                 onJsonSave={handleJsonSave}
+              />
+            )}
+            {activeTab === 'cabletype' && (
+              <CableTypeTab
+                cableTypeData={cableTypeData}
+                onCableTypeDataChange={handleCableTypeDataChange}
               />
             )}
           </div>
@@ -1311,7 +1526,19 @@ const AppRouter: React.FC = () => {
     setScreen('projects');
   }, []);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    // Firebase Google 세션 정리
+    try {
+      const { signOutUser } = await import('./services/firebase');
+      await signOutUser();
+    } catch { /* Firebase 미초기화 시 무시 */ }
+    // Kakao 세션 정리
+    try {
+      const K = (window as any).Kakao;
+      if (K?.Auth?.getAccessToken()) K.Auth.logout(() => {});
+    } catch { /* Kakao 미로드 시 무시 */ }
+    // Naver 토큰 정리
+    try { sessionStorage.removeItem('naver_access_token'); } catch {}
     clearCurrentProject();
     clearSession();
     setUser(null);

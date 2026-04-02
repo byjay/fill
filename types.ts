@@ -31,6 +31,19 @@ export interface CableData {
   cableWeight?: number;
 }
 
+export interface CableTypeData {
+  cableType: string;     // CABLE TYPE (예: D1, T1, CAT5 ...)
+  od: number;            // O.D (mm)
+  odHalf: number;        // O.D/2
+  crossSection: number;  // 단면적 (mm²)
+  weight: number;        // 무게 (kg/km)
+  din: string;           // DIN 규격
+  description: string;   // DESCRIPTION
+  glandSize: string;     // GLAND SIZE
+  terminalCore?: string; // terminal core
+  terminalEa?: number;   // terminal Ea
+}
+
 export interface NodeData {
   name: string;
   structure?: string;

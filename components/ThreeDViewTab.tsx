@@ -77,25 +77,55 @@ function getNodeColorForLegend(label: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 좌표 스케일 자동 계산 (최장 축 = 100 Three.js 단위)
+// ─────────────────────────────────────────────────────────────────────────────
+function computeCoordScale(nodes: NodeData[]): number {
+  const xs = nodes.map(n => n.x ?? 0);
+  const ys = nodes.map(n => n.y ?? 0);
+  const zs = nodes.map(n => n.z ?? 0);
+  const maxRange = Math.max(
+    Math.max(...xs) - Math.min(...xs),
+    Math.max(...ys) - Math.min(...ys),
+    Math.max(...zs) - Math.min(...zs),
+    1,
+  );
+  return 100 / maxRange;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Auto-layout: force-directed using relation field, with deck-based Y separation
 // ─────────────────────────────────────────────────────────────────────────────
-function buildPositions(nodeData: NodeData[]): Record<string, THREE.Vector3> {
+function buildPositions(
+  nodeData: NodeData[],
+  mode: 'coord' | 'auto' = 'auto',
+): Record<string, THREE.Vector3> {
   const positions: Record<string, THREE.Vector3> = {};
 
   if (nodeData.length === 0) return positions;
 
-  const hasCoords = nodeData.every(
-    (n) => n.x !== undefined && n.y !== undefined && n.z !== undefined,
-  );
-
-  if (hasCoords) {
-    nodeData.forEach((node) => {
-      const x = (node.x ?? 0) * 0.1;
-      const y = (node.y ?? 0) * 0.1;
-      const z = (node.z ?? 0) * 0.1;
-      positions[node.name] = new THREE.Vector3(x, y, z);
-    });
-    return positions;
+  // 좌표 모드: 실제 x, y, z 좌표 사용 (선박 좌표계 → Three.js 매핑)
+  // 선박 X(선폭) → Three.js X, 선박 Y(선미→선수) → Three.js Z, 선박 Z(높이) → Three.js Y
+  if (mode === 'coord') {
+    const withCoords = nodeData.filter(
+      n => n.x !== undefined && n.y !== undefined && n.z !== undefined,
+    );
+    if (withCoords.length > 0) {
+      const scale = computeCoordScale(withCoords);
+      // 최솟값 오프셋 계산 (원점 근처로 이동)
+      const minX = Math.min(...withCoords.map(n => n.x ?? 0));
+      const minY = Math.min(...withCoords.map(n => n.y ?? 0));
+      const minZ = Math.min(...withCoords.map(n => n.z ?? 0));
+      nodeData.forEach(node => {
+        if (node.x !== undefined && node.y !== undefined && node.z !== undefined) {
+          positions[node.name] = new THREE.Vector3(
+            (node.x - minX) * scale,
+            (node.z - minZ) * scale,  // 선박 Z(높이) → Three.js Y(상하)
+            (node.y - minY) * scale,  // 선박 Y(선미→선수) → Three.js Z
+          );
+        }
+      });
+      return positions;
+    }
   }
 
   const adjacency: Record<string, string[]> = {};
@@ -538,7 +568,7 @@ const CableLine: React.FC<CableLineProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid floor
+// Grid floor (자동 배치 모드용)
 // ─────────────────────────────────────────────────────────────────────────────
 const GridFloor: React.FC<{ center: THREE.Vector3 }> = ({ center }) => (
   <gridHelper
@@ -548,8 +578,105 @@ const GridFloor: React.FC<{ center: THREE.Vector3 }> = ({ center }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Deck 반투명 평면 (좌표 모드용)
+// ─────────────────────────────────────────────────────────────────────────────
+interface DeckPlaneProps {
+  yPosition: number;
+  sizeX: number;
+  sizeZ: number;
+  centerX: number;
+  centerZ: number;
+  color: string;
+  label: string;
+}
+
+const DeckPlane: React.FC<DeckPlaneProps> = ({ yPosition, sizeX, sizeZ, centerX, centerZ, color, label }) => (
+  <group position={[centerX, yPosition, centerZ]}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[sizeX, sizeZ]} />
+      <meshStandardMaterial color={color} transparent opacity={0.07} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>
+    {/* 테두리 라인 */}
+    <Line
+      points={[
+        [-sizeX / 2, 0, -sizeZ / 2], [sizeX / 2, 0, -sizeZ / 2],
+        [sizeX / 2, 0, sizeZ / 2], [-sizeX / 2, 0, sizeZ / 2],
+        [-sizeX / 2, 0, -sizeZ / 2],
+      ]}
+      color={color} lineWidth={1} transparent opacity={0.35}
+    />
+    <Text position={[-sizeX / 2 + 1, 0.5, -sizeZ / 2 + 1]} fontSize={2} color={color} anchorX="left" anchorY="bottom">
+      {`DECK ${label}`}
+    </Text>
+  </group>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 좌표축 + 눈금 (좌표 모드용)
+// ─────────────────────────────────────────────────────────────────────────────
+interface CoordAxesProps {
+  origin: THREE.Vector3;
+  sizeX: number;
+  sizeY: number;
+  sizeZ: number;
+  scale: number; // Three.js 단위 → 실제 단위 역수
+}
+
+const CoordAxes: React.FC<CoordAxesProps> = ({ origin, sizeX, sizeY, sizeZ, scale }) => {
+  const tickStep = Math.pow(10, Math.floor(Math.log10((Math.max(sizeX, sizeZ) / scale) / 5)));
+  const realTickStep = tickStep * scale;
+
+  const xTicks: number[] = [];
+  for (let v = 0; v <= sizeX; v += realTickStep) xTicks.push(v);
+  const zTicks: number[] = [];
+  for (let v = 0; v <= sizeZ; v += realTickStep) zTicks.push(v);
+  const yTicks: number[] = [];
+  for (let v = 0; v <= sizeY; v += realTickStep) yTicks.push(v);
+
+  const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}km` : `${v.toFixed(0)}m`;
+
+  return (
+    <group position={origin}>
+      {/* X축 (빨강) */}
+      <Line points={[[0,0,0],[sizeX+4,0,0]]} color="#ef4444" lineWidth={2} />
+      <Text position={[sizeX+6,0,0]} fontSize={2} color="#ef4444" anchorX="left">X</Text>
+      {xTicks.map(v => (
+        <group key={`xt${v}`} position={[v,0,0]}>
+          <Line points={[[0,-0.5,0],[0,0.5,0]]} color="#ef4444" lineWidth={1} />
+          <Text position={[0,-2,0]} fontSize={1.2} color="#6b7280" anchorX="center">{fmt(v/scale)}</Text>
+        </group>
+      ))}
+      {/* Y축 = 선박 Z 높이 (초록) */}
+      <Line points={[[0,0,0],[0,sizeY+4,0]]} color="#22c55e" lineWidth={2} />
+      <Text position={[0,sizeY+6,0]} fontSize={2} color="#22c55e" anchorX="center">Z(Height)</Text>
+      {yTicks.map(v => (
+        <group key={`yt${v}`} position={[0,v,0]}>
+          <Line points={[[-0.5,0,0],[0.5,0,0]]} color="#22c55e" lineWidth={1} />
+          <Text position={[-2,0,0]} fontSize={1.2} color="#6b7280" anchorX="right">{fmt(v/scale)}</Text>
+        </group>
+      ))}
+      {/* Z축 = 선박 Y 선수미 (파랑) */}
+      <Line points={[[0,0,0],[0,0,sizeZ+4]]} color="#3b82f6" lineWidth={2} />
+      <Text position={[0,0,sizeZ+6]} fontSize={2} color="#3b82f6" anchorX="center">Y(Fore/Aft)</Text>
+      {zTicks.map(v => (
+        <group key={`zt${v}`} position={[0,0,v]}>
+          <Line points={[[0,-0.5,0],[0,0.5,0]]} color="#3b82f6" lineWidth={1} />
+          <Text position={[0,-2,0]} fontSize={1.2} color="#6b7280" anchorX="center">{fmt(v/scale)}</Text>
+        </group>
+      ))}
+    </group>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main scene
 // ─────────────────────────────────────────────────────────────────────────────
+interface DeckPlaneData {
+  label: string;
+  yPosition: number;
+  color: string;
+}
+
 interface SceneProps {
   nodeData: NodeData[];
   cableData: CableData[];
@@ -571,6 +698,12 @@ interface SceneProps {
   distance: number;
   cameraPreset: CameraPreset;
   onPresetApplied: () => void;
+  // 좌표 모드 전용
+  isCoordMode: boolean;
+  showDeckPlanes: boolean;
+  deckPlanes: DeckPlaneData[];
+  sceneBounds: { sizeX: number; sizeY: number; sizeZ: number };
+  coordScale: number;
 }
 
 const Scene: React.FC<SceneProps> = ({
@@ -594,13 +727,47 @@ const Scene: React.FC<SceneProps> = ({
   distance,
   cameraPreset,
   onPresetApplied,
+  isCoordMode,
+  showDeckPlanes,
+  deckPlanes,
+  sceneBounds,
+  coordScale,
 }) => (
   <>
     <ambientLight intensity={0.5} />
     <directionalLight position={[50, 80, 50]} intensity={0.8} castShadow />
     <pointLight position={[-50, 50, -50]} intensity={0.3} color="#3b82f6" />
 
-    <GridFloor center={center} />
+    {/* 좌표 모드: Deck 평면 + 축 / 자동 모드: 격자 */}
+    {isCoordMode ? (
+      <>
+        {showDeckPlanes && deckPlanes.map(dp => (
+          <DeckPlane
+            key={dp.label}
+            label={dp.label}
+            yPosition={dp.yPosition}
+            sizeX={sceneBounds.sizeX * 1.15}
+            sizeZ={sceneBounds.sizeZ * 1.15}
+            centerX={center.x}
+            centerZ={center.z}
+            color={dp.color}
+          />
+        ))}
+        <CoordAxes
+          origin={new THREE.Vector3(
+            center.x - sceneBounds.sizeX / 2,
+            center.y - sceneBounds.sizeY / 2,
+            center.z - sceneBounds.sizeZ / 2,
+          )}
+          sizeX={sceneBounds.sizeX}
+          sizeY={sceneBounds.sizeY}
+          sizeZ={sceneBounds.sizeZ}
+          scale={coordScale}
+        />
+      </>
+    ) : (
+      <GridFloor center={center} />
+    )}
 
     <CameraController
       controlsRef={controlsRef}
@@ -793,6 +960,14 @@ const NodeInfoPanel: React.FC<NodeInfoPanelProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-500">Link Len</span>
                   <span className="text-slate-300">{selected.linkLength}m</span>
+                </div>
+              )}
+              {selected.x !== undefined && (
+                <div className="border-t border-slate-800 mt-1 pt-1">
+                  <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wide mb-0.5">Coordinates</div>
+                  <div className="font-mono text-[10px] text-cyan-400">
+                    X:{selected.x.toFixed(1)} Y:{(selected.y ?? 0).toFixed(1)} Z:{(selected.z ?? 0).toFixed(1)}
+                  </div>
                 </div>
               )}
             </div>
@@ -1064,8 +1239,33 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
 
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
-  // Build positions once per nodeData change (force-directed layout)
-  const positions = useMemo(() => buildPositions(nodeData), [nodeData]);
+  // 좌표 모드 / 자동 배치 모드
+  const hasCoordData = useMemo(
+    () => nodeData.some(n => n.x !== undefined && n.y !== undefined && n.z !== undefined),
+    [nodeData],
+  );
+  const [layoutMode, setLayoutMode] = useState<'coord' | 'auto'>('auto');
+  const [showDeckPlanes, setShowDeckPlanes] = useState(true);
+  const isCoordMode = layoutMode === 'coord' && hasCoordData;
+
+  // 좌표 모드 전환 시 자동으로 coord 모드 활성화
+  useEffect(() => {
+    if (hasCoordData) setLayoutMode('coord');
+    else setLayoutMode('auto');
+  }, [hasCoordData]);
+
+  // Build positions
+  const positions = useMemo(
+    () => buildPositions(nodeData, isCoordMode ? 'coord' : 'auto'),
+    [nodeData, isCoordMode],
+  );
+
+  // coordScale: Three.js 단위 → 실제 단위 변환
+  const coordScale = useMemo(() => {
+    if (!isCoordMode) return 1;
+    const withCoords = nodeData.filter(n => n.x !== undefined && n.y !== undefined && n.z !== undefined);
+    return withCoords.length > 0 ? computeCoordScale(withCoords) : 1;
+  }, [nodeData, isCoordMode]);
 
   // Scene bounding info for camera placement
   const { center, distance } = useMemo(() => {
@@ -1080,6 +1280,35 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
     const d = Math.max(size.length() * 0.8, 30);
     return { center: c, distance: d };
   }, [positions]);
+
+  // Scene bounds (bounding box)
+  const sceneBounds = useMemo(() => {
+    const vecs = Object.values(positions);
+    if (vecs.length === 0) return { sizeX: 100, sizeY: 10, sizeZ: 100 };
+    const box = new THREE.Box3();
+    vecs.forEach(v => box.expandByPoint(v));
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    return { sizeX: Math.max(size.x, 1), sizeY: Math.max(size.y, 1), sizeZ: Math.max(size.z, 1) };
+  }, [positions]);
+
+  // Deck 평면 데이터 (좌표 모드용)
+  const deckPlanes = useMemo((): DeckPlaneData[] => {
+    if (!isCoordMode) return [];
+    const deckYs: Record<string, number[]> = {};
+    nodeData.forEach(n => {
+      if (!n.deck) return;
+      const pos = positions[n.name];
+      if (!pos) return;
+      if (!deckYs[n.deck]) deckYs[n.deck] = [];
+      deckYs[n.deck].push(pos.y);
+    });
+    return Object.entries(deckYs).map(([label, ys]) => ({
+      label,
+      yPosition: ys.reduce((a, b) => a + b, 0) / ys.length,
+      color: DECK_COLORS[label.padStart(2, '0')] ?? DECK_COLORS.default,
+    })).sort((a, b) => a.yPosition - b.yPosition);
+  }, [nodeData, positions, isCoordMode]);
 
   // Cable counts per node
   const cableCounts = useMemo(() => {
@@ -1218,6 +1447,36 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
           onToggle={() => setAutoRotate((v) => !v)}
         />
 
+        {/* Coord mode toggle (only when coord data exists) */}
+        {hasCoordData && (
+          <>
+            <div className="w-px h-5 bg-slate-700" />
+            <button
+              onClick={() => setLayoutMode(m => m === 'coord' ? 'auto' : 'coord')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                isCoordMode
+                  ? 'bg-cyan-900/60 border-cyan-500 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
+                  : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {isCoordMode ? '📍 Coord' : '🔀 Auto'}
+            </button>
+            {isCoordMode && (
+              <button
+                onClick={() => setShowDeckPlanes(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                  showDeckPlanes
+                    ? 'bg-slate-800 border-slate-600 text-amber-400'
+                    : 'bg-slate-900 border-slate-800 text-slate-600'
+                }`}
+              >
+                {showDeckPlanes ? <Eye size={13} /> : <EyeOff size={13} />}
+                Decks
+              </button>
+            )}
+          </>
+        )}
+
         <div className="w-px h-5 bg-slate-700" />
 
         <CableSearchPanel
@@ -1317,6 +1576,11 @@ const ThreeDViewTab: React.FC<ThreeDViewTabProps> = ({ cableData, nodeData }) =>
                   distance={distance}
                   cameraPreset={cameraPreset}
                   onPresetApplied={handlePresetApplied}
+                  isCoordMode={isCoordMode}
+                  showDeckPlanes={showDeckPlanes}
+                  deckPlanes={deckPlanes}
+                  sceneBounds={sceneBounds}
+                  coordScale={coordScale}
                 />
               </Canvas>
             </Suspense>

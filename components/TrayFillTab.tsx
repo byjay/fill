@@ -461,61 +461,42 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
               </div>
             )}
 
-            {/* ── 듀얼 레이아웃: 좌우 가로 분할 ── */}
-            {secondaryResult && dualConfigs?.secondary ? (
-              <div className="flex-1 flex flex-row gap-1 overflow-hidden">
-                {/* Config A: Primary (좌) */}
-                <div className="flex-1 min-w-0 overflow-hidden rounded-lg border border-slate-300">
-                  <TrayVisualizer
-                    systemResult={systemResult}
-                    recommendedResult={recommendedResult}
-                    fillRatioLimit={fillRatioLimit}
-                    onApplyRecommendation={() => setManualWidth(null)}
-                    onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
-                    onExportHtml={() => {}}
-                    onExportDxf={exportToDxf}
-                    compact
-                    trayTypeLabel={dualConfigs.primary ? getTrayTypeName(dualConfigs.primary.tiers, dualConfigs.primary.width) : undefined}
-                    showDetails={showDetails}
-                  />
-                </div>
-                {/* Config B: Secondary (우) */}
-                <div className="flex-1 min-w-0 overflow-hidden rounded-lg border border-slate-300">
-                  <TrayVisualizer
-                    systemResult={secondaryResult}
-                    recommendedResult={null}
-                    fillRatioLimit={fillRatioLimit}
-                    onApplyRecommendation={() => {
-                      if (dualConfigs.secondary) {
-                        setNumberOfTiers(dualConfigs.secondary.tiers);
-                        setManualWidth(dualConfigs.secondary.width);
-                      }
-                    }}
-                    onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
-                    onExportHtml={() => {}}
-                    onExportDxf={exportToDxf}
-                    compact
-                    trayTypeLabel={getTrayTypeName(dualConfigs.secondary.tiers, dualConfigs.secondary.width)}
-                    showDetails={showDetails}
-                  />
-                </div>
+            {/* ── 단일 최적 시각화 (노드 리스트는 좌측에 항상 유지) ── */}
+            <div className="flex-1 relative overflow-hidden">
+              <div className="absolute inset-0 overflow-hidden">
+                <TrayVisualizer
+                  systemResult={systemResult}
+                  recommendedResult={recommendedResult}
+                  fillRatioLimit={fillRatioLimit}
+                  onApplyRecommendation={() => setManualWidth(null)}
+                  onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
+                  onExportHtml={() => {}}
+                  onExportDxf={exportToDxf}
+                  trayTypeLabel={systemResult ? getTrayTypeName(systemResult.tiers.length, systemResult.systemWidth) : undefined}
+                  showDetails={showDetails}
+                />
               </div>
-            ) : (
-              /* ── 단일 레이아웃: 기존 풀사이즈 ── */
-              <div className="flex-1 relative overflow-hidden">
-                <div className="absolute inset-0 overflow-hidden">
-                  <TrayVisualizer
-                    systemResult={systemResult}
-                    recommendedResult={recommendedResult}
-                    fillRatioLimit={fillRatioLimit}
-                    onApplyRecommendation={() => setManualWidth(null)}
-                    onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
-                    onExportHtml={() => {}}
-                    onExportDxf={exportToDxf}
-                    trayTypeLabel={systemResult ? getTrayTypeName(systemResult.tiers.length, systemResult.systemWidth) : undefined}
-                    showDetails={showDetails}
-                  />
-                </div>
+            </div>
+
+            {/* ── 대안 설정 요약 바 (secondary가 있으면 하단에 간략 표시) ── */}
+            {secondaryResult && dualConfigs?.secondary && (
+              <div className="shrink-0 bg-slate-800 border-t border-slate-700 px-4 py-2 flex items-center gap-4">
+                <span className="text-[9px] text-slate-500 font-bold uppercase">대안:</span>
+                <button
+                  onClick={() => {
+                    setNumberOfTiers(dualConfigs.secondary!.tiers);
+                    setManualWidth(dualConfigs.secondary!.width);
+                  }}
+                  className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors border border-slate-600"
+                >
+                  <span className="text-cyan-400 font-black">{getTrayTypeName(dualConfigs.secondary.tiers, dualConfigs.secondary.width)}</span>
+                  <span>W{dualConfigs.secondary.width}mm × L{dualConfigs.secondary.tiers}</span>
+                  <span className="text-emerald-400">{dualConfigs.secondary.fillRatio.toFixed(1)}%</span>
+                  <span className="text-slate-400">→ 클릭하면 전환</span>
+                </button>
+                <span className="text-[9px] text-slate-600 ml-auto">
+                  현재: {getTrayTypeName(systemResult.tiers.length, systemResult.systemWidth)} W{systemResult.systemWidth}mm × L{systemResult.tiers.length}
+                </span>
               </div>
             )}
           </div>

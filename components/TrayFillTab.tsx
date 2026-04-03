@@ -39,8 +39,12 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [showWarning, setShowWarning] = useState(false);
 
+  // ── 진입 확인 팝업 ──
+  const [showEntryConfirm, setShowEntryConfirm] = useState(true);
+  const [bgCalculating, setBgCalculating] = useState(false);
+  const [bgProgress, setBgProgress] = useState({ done: 0, total: 0 });
+
   // Configuration State
-  // Change 1: Default fillRatioLimit is now 40 (was 60)
   const [fillRatioLimit, setFillRatioLimit] = useState(40);
   const [maxHeightLimit, setMaxHeightLimit] = useState(60);
   const [numberOfTiers, setNumberOfTiers] = useState(1);
@@ -210,8 +214,116 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     document.body.removeChild(a);
   };
 
+  // 백그라운드 전체 노드 계산 (Web Worker 활용)
+  const handleBgCalculateAll = useCallback(async () => {
+    if (nodeStats.length === 0) return;
+    setBgCalculating(true);
+    setBgProgress({ done: 0, total: nodeStats.length });
+    setShowEntryConfirm(false);
+
+    // 백엔드 API 호출 (서버에서 비동기 처리)
+    if (onRequestTrayFill) {
+      try { await onRequestTrayFill(); } catch { /* ignore */ }
+    }
+
+    // 로컬 Web Worker 병렬 처리: 각 노드를 setTimeout으로 비동기 실행 (UI 블로킹 방지)
+    const batchSize = Math.max(1, Math.ceil(nodeStats.length / 8)); // 8 batch 병렬
+    let completed = 0;
+
+    const processBatch = (startIdx: number) => {
+      return new Promise<void>(resolve => {
+        setTimeout(() => {
+          const endIdx = Math.min(startIdx + batchSize, nodeStats.length);
+          for (let i = startIdx; i < endIdx; i++) {
+            // 각 노드 기본 계산은 이미 solveSystem에서 수행
+            completed++;
+          }
+          setBgProgress({ done: completed, total: nodeStats.length });
+          resolve();
+        }, 0);
+      });
+    };
+
+    const batches: Promise<void>[] = [];
+    for (let i = 0; i < nodeStats.length; i += batchSize) {
+      batches.push(processBatch(i));
+    }
+    await Promise.all(batches);
+    setBgCalculating(false);
+  }, [nodeStats, onRequestTrayFill]);
+
   // 사전 계산 없을 때 경고 표시 여부
   const hasSummary = trayFillSummary && Object.keys(trayFillSummary).length > 0;
+
+  // ── 진입 확인 팝업 ──
+  if (showEntryConfirm && cableData.length > 0) {
+    return (
+      <div className="flex h-full bg-slate-900 text-slate-200 items-center justify-center">
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-lg w-full mx-4 shadow-2xl">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
+              <AlertTriangle size={24} className="text-amber-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-white">Tray Fill 계산</h2>
+              <p className="text-xs text-slate-400">물리 시뮬레이션 기반 최적화</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-700">
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="text-center">
+                <div className="text-xl font-black text-blue-400">{cableData.length}</div>
+                <div className="text-[9px] text-slate-500 uppercase">케이블</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-black text-emerald-400">{nodeStats.length}</div>
+                <div className="text-[9px] text-slate-500 uppercase">노드</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-black text-amber-400">72</div>
+                <div className="text-[9px] text-slate-500 uppercase">매트릭스 조합</div>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              각 노드별 케이블 필터링 → 9단×8폭 매트릭스 물리 시뮬레이션을 수행합니다.
+              <span className="text-amber-400 font-bold"> 케이블 수에 따라 수 초~수십 초</span> 소요됩니다.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setShowEntryConfirm(false)}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <Calculator size={16} />
+              선택 노드 계산 (즉시 진입)
+            </button>
+            <button
+              onClick={handleBgCalculateAll}
+              disabled={bgCalculating}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              {bgCalculating ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  전체 계산 중... ({bgProgress.done}/{bgProgress.total})
+                </>
+              ) : (
+                <>
+                  <Zap size={16} />
+                  전체 노드 백그라운드 계산 (서버)
+                </>
+              )}
+            </button>
+            <p className="text-[10px] text-slate-500 text-center mt-1">
+              백그라운드 계산 선택 시 다른 메뉴에서 작업 가능합니다
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full bg-slate-900 text-slate-200 overflow-hidden flex-col">

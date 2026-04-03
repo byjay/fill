@@ -616,6 +616,7 @@ interface TopToolbarProps {
   onJsonLoad: (cables: CableData[], nodes: NodeData[]) => void;
   advancedTab: AdvancedTab;
   onAdvancedSelect: (tab: AdvMenuTab) => void;
+  cableTypeData: CableTypeData[];
 }
 
 const TopToolbar: React.FC<TopToolbarProps> = ({
@@ -624,6 +625,7 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onExportCableList, onExportNodeInfo,
   onJsonSave, onJsonLoad,
   advancedTab, onAdvancedSelect,
+  cableTypeData,
 }) => {
   const { currentProject, updateCablesAndNodes } = useProject();
   const cables = currentProject?.cables ?? [];
@@ -1413,6 +1415,16 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
             <span className="hidden sm:inline">프로젝트</span>
           </button>
 
+          {/* Manual */}
+          <button
+            onClick={() => window.open('/manual.html', '_blank')}
+            className="flex items-center gap-1 text-[10px] font-bold text-cyan-400 hover:text-white bg-slate-800 hover:bg-cyan-700 border border-slate-700 hover:border-cyan-500 px-2 py-1 rounded transition-colors"
+            title="매뉴얼"
+          >
+            <span>📖</span>
+            <span className="hidden sm:inline">Manual</span>
+          </button>
+
           {/* Logout */}
           <button
             onClick={onLogout}
@@ -1437,6 +1449,7 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
         onJsonLoad={handleJsonLoad}
         advancedTab={advancedTab}
         onAdvancedSelect={handleAdvancedSelect}
+        cableTypeData={cableTypeData}
       />
 
       {/* ── Body (사이드바/좌측nav 제거 → 전체폭) ── */}

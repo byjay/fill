@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCMS — Commander's Field Manual</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+KR:wght@300;400;700;900&display=swap');
+:root{--navy:#0a0e1a;--dark:#0f172a;--panel:#1e293b;--border:#334155;--blue:#3b82f6;--cyan:#06b6d4;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--purple:#8b5cf6;--text:#e2e8f0;--muted:#94a3b8;--gold:#fbbf24}
+body{background:var(--navy);color:var(--text);font-family:'Noto Sans KR',sans-serif;overflow-x:hidden}
+::selection{background:var(--blue);color:white}
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--dark)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--blue)}
+
+/* ─── Particles Canvas ─── */
+#particles{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
+/* ─── Layout ─── */
+.app{display:flex;height:100vh;position:relative;z-index:1}
+.sidebar{width:280px;background:var(--dark);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;z-index:10}
+.main{flex:1;overflow-y:auto;scroll-behavior:smooth}
+
+/* ─── Sidebar ─── */
+.sidebar-header{padding:20px;border-bottom:1px solid var(--border);text-align:center}
+.sidebar-header h1{font-family:'Orbitron',monospace;font-size:20px;color:var(--cyan);letter-spacing:3px;text-shadow:0 0 20px rgba(6,182,212,0.5)}
+.sidebar-header p{font-size:11px;color:var(--muted);margin-top:4px;letter-spacing:1px}
+.sidebar-xp{padding:12px 20px;border-bottom:1px solid var(--border)}
+.xp-bar{height:8px;background:var(--panel);border-radius:4px;overflow:hidden;margin-top:6px}
+.xp-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--cyan));border-radius:4px;transition:width 1s ease;width:0%}
+.xp-label{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
+.nav-list{flex:1;overflow-y:auto;padding:10px 0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;transition:all .2s;border-left:3px solid transparent;font-size:13px}
+.nav-item:hover{background:rgba(59,130,246,0.1);border-left-color:var(--blue)}
+.nav-item.active{background:rgba(59,130,246,0.15);border-left-color:var(--cyan);color:var(--cyan)}
+.nav-item .icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.nav-item .badge{margin-left:auto;font-size:9px;padding:2px 6px;border-radius:10px;font-weight:700;letter-spacing:.5px}
+.badge-new{background:var(--green);color:white}
+.badge-pro{background:var(--purple);color:white}
+.badge-core{background:var(--blue);color:white}
+
+/* ─── Quest Card Section ─── */
+.quest-section{padding:40px 60px;max-width:1100px;margin:0 auto}
+.quest-card{background:var(--dark);border:1px solid var(--border);border-radius:16px;padding:0;margin-bottom:40px;overflow:hidden;opacity:0;transform:translateY(40px);transition:all .6s cubic-bezier(.16,1,.3,1)}
+.quest-card.visible{opacity:1;transform:translateY(0)}
+.quest-header{padding:24px 32px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--border);position:relative;overflow:hidden}
+.quest-header::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,rgba(59,130,246,0.08),transparent);pointer-events:none}
+.quest-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;position:relative}
+.quest-icon::after{content:'';position:absolute;inset:-2px;border-radius:14px;background:linear-gradient(135deg,var(--cyan),var(--blue));z-index:-1;opacity:.6}
+.quest-title{font-family:'Orbitron',monospace;font-size:16px;font-weight:700;letter-spacing:1px}
+.quest-subtitle{font-size:12px;color:var(--muted);margin-top:2px}
+.quest-level{margin-left:auto;font-family:'Orbitron',monospace;font-size:11px;color:var(--gold);background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);padding:4px 12px;border-radius:20px}
+.quest-body{padding:28px 32px}
+.quest-desc{font-size:14px;line-height:1.8;color:var(--text);margin-bottom:20px}
+
+/* ─── Feature Grid ─── */
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:20px 0}
+.feature-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;transition:all .3s;cursor:default;position:relative;overflow:hidden}
+.feature-card:hover{border-color:var(--cyan);transform:translateY(-3px);box-shadow:0 8px 30px rgba(6,182,212,0.15)}
+.feature-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:3px;background:linear-gradient(90deg,var(--cyan),var(--blue));transform:scaleX(0);transition:transform .3s;transform-origin:left}
+.feature-card:hover::before{transform:scaleX(1)}
+.feature-card h4{font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.feature-card p{font-size:12px;color:var(--muted);line-height:1.6}
+
+/* ─── KPI Row ─── */
+.kpi-row{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+.kpi{background:linear-gradient(135deg,var(--panel),var(--dark));border:1px solid var(--border);border-radius:12px;padding:16px 20px;min-width:120px;text-align:center;flex:1}
+.kpi-value{font-family:'Orbitron',monospace;font-size:24px;font-weight:900;background:linear-gradient(135deg,var(--cyan),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.kpi-label{font-size:10px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
+
+/* ─── Skill Tree ─── */
+.skill-tree{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.skill-row{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-radius:8px;border-left:3px solid var(--border);transition:all .3s}
+.skill-row:hover{border-left-color:var(--cyan);background:rgba(30,41,59,0.8)}
+.skill-name{font-size:12px;font-weight:700;color:var(--text);min-width:140px}
+.skill-bar{flex:1;height:6px;background:var(--dark);border-radius:3px;overflow:hidden}
+.skill-fill{height:100%;border-radius:3px;transition:width 1.5s ease}
+.skill-pct{font-family:'Orbitron',monospace;font-size:10px;color:var(--cyan);min-width:40px;text-align:right}
+
+/* ─── Animated Typing ─── */
+.typing{overflow:hidden;white-space:nowrap;border-right:2px solid var(--cyan);animation:typing 2s steps(40) 1s forwards,blink .5s step-end infinite alternate;width:0;font-family:'Orbitron',monospace;font-size:13px;color:var(--cyan)}
+@keyframes typing{to{width:100%}}
+@keyframes blink{50%{border-color:transparent}}
+
+/* ─── Glow Pulse ─── */
+.glow{animation:glow-pulse 2s ease-in-out infinite alternate}
+@keyframes glow-pulse{from{text-shadow:0 0 5px var(--cyan),0 0 10px var(--cyan)}to{text-shadow:0 0 20px var(--cyan),0 0 40px var(--blue)}}
+
+/* ─── Hero Section ─── */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;position:relative}
+.hero-title{font-family:'Orbitron',monospace;font-size:48px;font-weight:900;letter-spacing:6px;margin-bottom:12px}
+.hero-title span{background:linear-gradient(135deg,var(--cyan),var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-sub{font-size:16px;color:var(--muted);letter-spacing:2px;margin-bottom:40px}
+.hero-start{font-family:'Orbitron',monospace;font-size:14px;color:var(--cyan);border:2px solid var(--cyan);padding:14px 40px;border-radius:30px;cursor:pointer;transition:all .3s;text-decoration:none;letter-spacing:2px;position:relative;overflow:hidden}
+.hero-start:hover{background:var(--cyan);color:var(--navy);box-shadow:0 0 30px rgba(6,182,212,0.4)}
+.hero-start::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:linear-gradient(transparent,rgba(255,255,255,0.1),transparent);transform:rotate(45deg);transition:all .5s}
+.hero-start:hover::before{left:100%}
+.version-badge{margin-top:20px;font-size:11px;color:var(--muted);background:var(--panel);padding:6px 16px;border-radius:20px;border:1px solid var(--border)}
+
+/* ─── Status Tag ─── */
+.tag{display:inline-block;font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;letter-spacing:.5px}
+.tag-active{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.3)}
+.tag-warning{background:rgba(245,158,11,0.15);color:var(--amber);border:1px solid rgba(245,158,11,0.3)}
+.tag-error{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)}
+
+/* ─── Responsive ─── */
+@media(max-width:768px){
+  .sidebar{display:none}
+  .quest-section{padding:20px}
+  .hero-title{font-size:28px}
+  .feature-grid{grid-template-columns:1fr}
+}
+
+/* ─── Print ─── */
+@media print{
+  .sidebar,#particles{display:none}
+  .quest-card{opacity:1!important;transform:none!important;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<canvas id="particles"></canvas>
+
+<div class="app">
+  <!-- ═══ SIDEBAR ═══ -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <h1 class="glow">SCMS</h1>
+      <p>FIELD MANUAL v1.0</p>
+    </div>
+    <div class="sidebar-xp">
+      <div style="font-size:11px;color:var(--gold);font-weight:700">COMMANDER LEVEL 35</div>
+      <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+      <div class="xp-label"><span>XP 87,500 / 100,000</span><span>NEXT: ADMIRAL</span></div>
+    </div>
+    <div class="nav-list" id="navList"></div>
+    <div style="padding:16px 20px;border-top:1px solid var(--border);text-align:center">
+      <a href="/" style="font-size:11px;color:var(--cyan);text-decoration:none;letter-spacing:1px">← RETURN TO BRIDGE</a>
+    </div>
+  </nav>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main" id="mainContent">
+    <!-- HERO -->
+    <section class="hero" id="hero">
+      <div class="hero-title"><span>SCMS</span></div>
+      <div class="hero-sub">SEASTAR CABLE MANAGEMENT SYSTEM</div>
+      <div class="typing" id="heroTyping">Initializing Commander's Field Manual...</div>
+      <div style="height:30px"></div>
+      <a href="#quest-dashboard" class="hero-start" onclick="startMission()">▶ START MISSION BRIEFING</a>
+      <div class="version-badge">BUILD 2026.04.03 | CLASSIFICATION: UNRESTRICTED</div>
+    </section>
+
+    <div class="quest-section" id="questSection"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// QUEST DATA — Each quest = one feature section
+// ═══════════════════════════════════════════════════════════════════════════
+const QUESTS = [
+{id:'dashboard', icon:'📊', title:'DASHBOARD', subtitle:'Mission Control Center', level:'LV.1 BASIC',
+ desc:'프로젝트 진입 시 전체 현황을 실시간 KPI로 파악합니다. 케이블/노드/길이/경로 상태를 한눈에 확인하고, 시스템별·타입별 분포 차트와 Top 10 밀집 노드를 분석합니다.',
+ kpis:[{v:'2,469',l:'TOTAL CABLES'},{v:'1,094',l:'TOTAL NODES'},{v:'152,465m',l:'TOTAL LENGTH'},{v:'2,469',l:'PATHS'}],
+ features:[
+   {icon:'🍩',t:'System Distribution',d:'POWER, LTG, CONT, FIRE, COMM 시스템별 도넛 차트'},
+   {icon:'📊',t:'Type Distribution',d:'DY2, MY4, FMY2 등 케이블 타입별 수량 막대 차트'},
+   {icon:'🏆',t:'Top 10 Nodes',d:'케이블 밀집도 상위 10개 노드 (PR130, SF99S 등)'},
+   {icon:'⚡',t:'Quick Actions',d:'프로젝트 전환, Undo/Redo, JSON 저장/로드'}
+]},
+{id:'cables', icon:'🔌', title:'CABLE LIST', subtitle:'Data Command & Control', level:'LV.2 CORE',
+ desc:'엑셀 파일로 케이블 데이터를 업로드하고 실시간 편집합니다. 349종 케이블 타입 DB(JIS/IEC)와 자동 매칭하여 O.D, 단면적, 중량을 자동 반영합니다.',
+ features:[
+   {icon:'📤',t:'Excel Upload',d:'CABLE LIST 엑셀 → 자동 컬럼 매핑 (NAME, TYPE, OD, FROM/TO)'},
+   {icon:'🗃️',t:'349 Cable Types',d:'JIS/IEC 해양 케이블 사전 등록 (하드코딩 DB)'},
+   {icon:'🎯',t:'Auto OD Matching',d:'케이블 타입 → O.D 자동 매핑'},
+   {icon:'✏️',t:'Inline Edit',d:'셀 클릭 즉시 편집, Ctrl+Z Undo 지원'}
+]},
+{id:'nodes', icon:'🌐', title:'NODE INFO', subtitle:'Network Topology Map', level:'LV.3 CORE',
+ desc:'노드(배선 경유점)의 속성 조회 및 케이블 통과량 분석. 각 노드의 단면적과 추천 트레이 폭을 자동 산출합니다.',
+ features:[
+   {icon:'📋',t:'Node Summary',d:'이름, 구조물, 타입, 연결, 링크 길이, X/Y/Z 좌표'},
+   {icon:'📐',t:'Cross-Section',d:'케이블 OD 기반 단면적 합산 → Fill Rate 40% 기준 폭 산출'},
+   {icon:'🔗',t:'Cable Through',d:'노드 통과 케이블 수, 단면적 합계'},
+   {icon:'📥',t:'Excel Export',d:'노드별 통과 케이블 상세 시트 엑셀'}
+]},
+{id:'routing', icon:'🗺️', title:'ROUTING', subtitle:'Smart Path Calculator', level:'LV.5 ADVANCED',
+ desc:'노드 네트워크에서 최적 케이블 경로를 자동 계산합니다. BFS 기본 라우터와 Dijkstra 스마트 라우터 2종을 제공합니다.',
+ features:[
+   {icon:'🔍',t:'Basic Router (BFS)',d:'최소 홉 경로, checkNode 경유점 지원'},
+   {icon:'🧠',t:'Smart Router',d:'가중 Dijkstra + 부하 분산 + 시스템 분리 + K-경로'},
+   {icon:'⚖️',t:'Load Balancing',d:'밀집 노드 페널티 → 자동 우회 분산'},
+   {icon:'📊',t:'Bottleneck Report',d:'상위 10개 과밀 노드, 개선율 리포트'}
+]},
+{id:'trayfill', icon:'📦', title:'TRAY FILL', subtitle:'9-Tier Physics Optimizer', level:'LV.8 EXPERT',
+ desc:'물리 기반 중력 시뮬레이션으로 케이블 트레이 최적 배치를 계산합니다. 9단(L1~L9) × 8폭(200~900mm) = 72가지 조합 자동 분석, 최적 2개 설정 추천.',
+ kpis:[{v:'9-Tier',l:'L1~L9 SUPPORT'},{v:'72',l:'MATRIX COMBOS'},{v:'DUAL',l:'COMPARE MODE'},{v:'DXF',l:'CAD EXPORT'}],
+ features:[
+   {icon:'🌍',t:'Physics Solver',d:'중력 배치, 충돌 검사, 지지 검증 (15° 간격 탐색)'},
+   {icon:'📐',t:'TRAY TYPE Table',d:'LA2~LI9 명명 체계, 72셀 팝업, 클릭 전환'},
+   {icon:'↔️',t:'Dual Layout',d:'최적 2개 설정 상/하 동시 비교'},
+   {icon:'🎛️',t:'Details Toggle',d:'Matrix/Summary 숨김/표시 토글'}
+]},
+{id:'3dview', icon:'🎮', title:'3D VIEW', subtitle:'Holographic Bridge Display', level:'LV.7 ADVANCED',
+ desc:'Three.js 기반 실시간 3D 시각화. 노드 네트워크와 케이블 경로를 입체적으로 탐색합니다. 좌표 모드와 Auto Layout 모드를 지원합니다.',
+ features:[
+   {icon:'🌐',t:'Coordinate Mode',d:'실제 선박 X/Y/Z 좌표 배치 + 덱 평면'},
+   {icon:'🧲',t:'Auto Layout',d:'Force-directed 물리 시뮬레이션 (80회 반복)'},
+   {icon:'🔥',t:'Fire Animation',d:'선택 케이블 경로 펄스 애니메이션 (빨강→주황)'},
+   {icon:'📷',t:'Camera Presets',d:'ISO / Top / Side / Front 4방향 프리셋'}
+]},
+{id:'bom', icon:'📋', title:'BOM ANALYSIS', subtitle:'6-Module Arsenal', level:'LV.9 MASTER',
+ desc:'BOM 상세 분석 6종을 한 화면에서 탭 전환으로 제공합니다. 각 모듈별 KPI 카드, 상세 테이블, CSV 내보내기.',
+ kpis:[{v:'23,684',l:'TERMINALS'},{v:'4,938',l:'GLANDS'},{v:'901',l:'EQUIPMENT'},{v:'6',l:'BOM MODULES'}],
+ features:[
+   {icon:'🔩',t:'Terminal BOM',d:'페룰(0.5~6mm²) + 링단자(10mm²↑), 56종 코어맵'},
+   {icon:'📏',t:'Tray BOM',d:'경로 세그먼트별 트레이 폭/길이 집계'},
+   {icon:'📦',t:'Procurement BOM',d:'타입별 총길이 + 5% 여유 + 중량'},
+   {icon:'🧱',t:'Coaming BOM',d:'COMPOUND/MANGANA 자동 산출, 충전율 35%'},
+   {icon:'🏷️',t:'Name Tag BOM',d:'FROM/TO 2개 + CTYPE 코밍 토글'},
+   {icon:'⭕',t:'Gland BOM',d:'JIS OSCG 46종, OD→D 최소 매칭, 장비별 집계'}
+]},
+{id:'verify', icon:'🛡️', title:'VERIFICATION', subtitle:'Classification Shield', level:'LV.6 ADVANCED',
+ desc:'IEC/JIS/DNV/KR/LR 규격 기반 자동 검증 시스템. 간섭 체크, 전압강하, 선급 규칙 30개 자동 적용.',
+ features:[
+   {icon:'⚠️',t:'Interference Check',d:'파워/시그널 혼재, 트레이 과적 자동 검출'},
+   {icon:'⚡',t:'Voltage Drop',d:'IEC 60092 전압강하 + Iz 허용전류 100%/85% 토글'},
+   {icon:'🏛️',t:'Class Rules',d:'DNV/KR/LR 30개 규칙 자동 검증'},
+   {icon:'🔍',t:'Path Validator',d:'BFS 연결성 검사 + 6종 경로 이슈 탐지'}
+]},
+{id:'nodeeditor', icon:'✏️', title:'NODE EDITOR', subtitle:'KaveRouter Command', level:'LV.10 LEGENDARY',
+ desc:'2D 캔버스 기반 인터랙티브 노드 편집기. DXF 도면 배경 위에서 노드를 생성/이동/연결/삭제합니다. 모든 변경사항은 D1 데이터베이스에 자동 저장됩니다.',
+ kpis:[{v:'3',l:'EDITOR MODES'},{v:'1,094',l:'NODES LOADED'},{v:'4',l:'AXIS LOCKS'},{v:'∞',l:'UNDO/REDO'}],
+ features:[
+   {icon:'🖱️',t:'Select Mode',d:'클릭 선택, Shift 다중 선택, 드래그 이동'},
+   {icon:'📍',t:'Place Mode',d:'캔버스 클릭 → 노드 생성 (자동 네이밍 N_001~)'},
+   {icon:'🔗',t:'Connect Mode',d:'노드 2개 클릭 → 양방향 Relation 생성'},
+   {icon:'📐',t:'DXF Background',d:'AutoCAD DXF 도면 업로드 → 레이어 토글'},
+   {icon:'🎯',t:'Axis Lock',d:'Free(F) / X / Y / Z 정밀 이동'},
+   {icon:'💾',t:'Auto Save',d:'변경 즉시 ProjectContext → D1 저장'}
+]}
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NAV
+// ═══════════════════════════════════════════════════════════════════════════
+const navEl = document.getElementById('navList');
+const badges = {dashboard:'CORE',cables:'CORE',nodes:'CORE',routing:'PRO',trayfill:'PRO',
+  '3dview':'PRO',bom:'PRO',verify:'PRO',nodeeditor:'NEW'};
+const badgeCls = {CORE:'badge-core',PRO:'badge-pro',NEW:'badge-new'};
+QUESTS.forEach(q => {
+  const el = document.createElement('div');
+  el.className = 'nav-item';
+  el.dataset.id = q.id;
+  const b = badges[q.id];
+  el.innerHTML = `<div class="icon" style="background:var(--panel)">${q.icon}</div>
+    <span>${q.title}</span>
+    ${b ? `<span class="badge ${badgeCls[b]}">${b}</span>` : ''}`;
+  el.onclick = () => {
+    document.getElementById('quest-'+q.id)?.scrollIntoView({behavior:'smooth'});
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    el.classList.add('active');
+  };
+  navEl.appendChild(el);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUEST CARDS
+// ═══════════════════════════════════════════════════════════════════════════
+const questSection = document.getElementById('questSection');
+QUESTS.forEach((q,i) => {
+  let html = `<div class="quest-card" id="quest-${q.id}">
+    <div class="quest-header">
+      <div class="quest-icon" style="background:var(--dark)">${q.icon}</div>
+      <div><div class="quest-title">${q.title}</div><div class="quest-subtitle">${q.subtitle}</div></div>
+      <div class="quest-level">${q.level}</div>
+    </div>
+    <div class="quest-body">
+      <div class="quest-desc">${q.desc}</div>`;
+  if (q.kpis) {
+    html += '<div class="kpi-row">';
+    q.kpis.forEach(k => {
+      html += `<div class="kpi"><div class="kpi-value">${k.v}</div><div class="kpi-label">${k.l}</div></div>`;
+    });
+    html += '</div>';
+  }
+  html += '<div class="feature-grid">';
+  q.features.forEach(f => {
+    html += `<div class="feature-card"><h4>${f.icon} ${f.t}</h4><p>${f.d}</p></div>`;
+  });
+  html += '</div>';
+  // Skill tree (simulated mastery bars)
+  html += '<div class="skill-tree">';
+  q.features.slice(0,3).forEach(f => {
+    const pct = 60 + Math.floor(Math.random()*35);
+    const color = pct>85?'var(--green)':pct>70?'var(--cyan)':'var(--blue)';
+    html += `<div class="skill-row"><span class="skill-name">${f.t}</span>
+      <div class="skill-bar"><div class="skill-fill" style="width:0%;background:${color}" data-pct="${pct}"></div></div>
+      <span class="skill-pct">${pct}%</span></div>`;
+  });
+  html += '</div></div></div>';
+  questSection.innerHTML += html;
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCROLL ANIMATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      // Animate skill bars
+      e.target.querySelectorAll('.skill-fill').forEach(bar => {
+        setTimeout(() => { bar.style.width = bar.dataset.pct + '%'; }, 300);
+      });
+      // Update nav
+      const id = e.target.id?.replace('quest-','');
+      if (id) {
+        document.querySelectorAll('.nav-item').forEach(n => {
+          n.classList.toggle('active', n.dataset.id === id);
+        });
+      }
+    }
+  });
+}, { threshold: 0.2 });
+document.querySelectorAll('.quest-card').forEach(c => observer.observe(c));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// XP BAR ANIMATION
+// ═══════════════════════════════════════════════════════════════════════════
+setTimeout(() => { document.getElementById('xpFill').style.width = '87.5%'; }, 500);
+
+function startMission() {
+  document.getElementById('quest-dashboard')?.scrollIntoView({behavior:'smooth'});
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTICLE SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('particles');
+const ctx = canvas.getContext('2d');
+let W, H;
+const particles = [];
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+for (let i = 0; i < 60; i++) {
+  particles.push({
+    x: Math.random()*W, y: Math.random()*H,
+    r: Math.random()*1.5+0.5,
+    dx: (Math.random()-0.5)*0.3, dy: (Math.random()-0.5)*0.3,
+    o: Math.random()*0.3+0.1
+  });
+}
+function drawParticles() {
+  ctx.clearRect(0,0,W,H);
+  particles.forEach(p => {
+    p.x += p.dx; p.y += p.dy;
+    if (p.x<0) p.x=W; if (p.x>W) p.x=0;
+    if (p.y<0) p.y=H; if (p.y>H) p.y=0;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(6,182,212,${p.o})`;
+    ctx.fill();
+  });
+  // Draw connections
+  for (let i=0; i<particles.length; i++) {
+    for (let j=i+1; j<particles.length; j++) {
+      const dx=particles[i].x-particles[j].x, dy=particles[i].y-particles[j].y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if (dist<120) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(6,182,212,${0.08*(1-dist/120)})`;
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+</script>
+</body>
+</html>

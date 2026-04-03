@@ -129,23 +129,28 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     );
   }, [systemResult, recommendedResult]);
 
-  // ── 듀얼 최적 설정 자동 탐색 ──
+  // ── 듀얼 최적 설정 자동 탐색 (반드시 다른 단수) ──
   const dualConfigs = useMemo(() => {
     if (!systemResult?.optimizationMatrix) return null;
-    const allOptimal: MatrixCell[] = [];
+    // 모든 셀을 수집 (optimal 우선, 그 다음 success)
+    const allCells: MatrixCell[] = [];
     for (const row of systemResult.optimizationMatrix) {
       for (const cell of row) {
-        if (cell.isOptimal) allOptimal.push(cell);
+        allCells.push(cell);
       }
     }
-    if (allOptimal.length === 0) return null;
-    // fill ratio 높은 순 (목표치에 가장 가까운 것)
-    allOptimal.sort((a, b) => b.fillRatio - a.fillRatio);
-    const primary = allOptimal[0];
-    // 다른 tier 수를 가진 차선책
-    const secondary = allOptimal.find(c => c.tiers !== primary.tiers) || null;
+    // 1순위: isOptimal=true, 2순위: success=true & fillRatio <= limit
+    const optimal = allCells.filter(c => c.isOptimal).sort((a, b) => b.fillRatio - a.fillRatio);
+    const feasible = allCells.filter(c => c.success && c.fillRatio <= fillRatioLimit && !c.isOptimal)
+      .sort((a, b) => b.fillRatio - a.fillRatio);
+    const candidates = [...optimal, ...feasible];
+    if (candidates.length === 0) return null;
+
+    const primary = candidates[0];
+    // 반드시 다른 단수! optimal 중에서 먼저 찾고, 없으면 feasible에서 찾기
+    const secondary = candidates.find(c => c.tiers !== primary.tiers) || null;
     return { primary, secondary };
-  }, [systemResult]);
+  }, [systemResult, fillRatioLimit]);
 
   // ── 세컨더리 SystemResult 계산 ──
   const secondaryResult = useMemo(() => {
@@ -333,11 +338,11 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
               </div>
             )}
 
-            {/* ── 듀얼 레이아웃: 두 최적 설정 동시 표시 ── */}
+            {/* ── 듀얼 레이아웃: 좌우 가로 분할 ── */}
             {secondaryResult && dualConfigs?.secondary ? (
-              <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-                {/* Config A: Primary */}
-                <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
+              <div className="flex-1 flex flex-row gap-1 overflow-hidden">
+                {/* Config A: Primary (좌) */}
+                <div className="flex-1 min-w-0 overflow-hidden rounded-lg border border-slate-300">
                   <TrayVisualizer
                     systemResult={systemResult}
                     recommendedResult={recommendedResult}
@@ -351,8 +356,8 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
                     showDetails={showDetails}
                   />
                 </div>
-                {/* Config B: Secondary */}
-                <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
+                {/* Config B: Secondary (우) */}
+                <div className="flex-1 min-w-0 overflow-hidden rounded-lg border border-slate-300">
                   <TrayVisualizer
                     systemResult={secondaryResult}
                     recommendedResult={null}

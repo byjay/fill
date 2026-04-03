@@ -1768,6 +1768,1511 @@ RULES.push({
   },
 });
 
+// ─── 추가 규칙 (CR31~CR60): DNV/LR/KR/IEC/SOLAS 상세 규정 ──
+
+// ---------- Category: Cable Sizing ----------
+
+// CR31: DNV 전력 케이블 최소 단면적 (기관실)
+RULES.push({
+  id: 'CR31',
+  category: 'Cable Sizing',
+  name: 'DNV 기관실 전력 케이블 최소 2.5mm²',
+  description: 'DNV Pt.4 Ch.8 Sec.3: 기관실 내 전력 케이블은 진동/고온 환경을 고려하여 최소 2.5mm² 이상이어야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.3.4',
+  classSociety: 'DNV',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const violations: CableData[] = [];
+
+    for (const cable of data.cables) {
+      if (!isPowerCable(cable)) continue;
+      const fromN = findNode(cable.fromNode, data.nodes);
+      const toN = findNode(cable.toNode, data.nodes);
+      const pathNodes = parsePath(cable);
+      const passesER = (fromN && isEngineRoom(fromN)) || (toN && isEngineRoom(toN)) ||
+        pathNodes.some(nd => { const n = findNode(nd, data.nodes); return n ? isEngineRoom(n) : false; });
+      if (!passesER) continue;
+
+      const cs = getCrossSection(cable, data.cableTypeDB);
+      if (cs !== null && cs < 2.5) {
+        violations.push(cable);
+      }
+    }
+
+    if (violations.length > 0) {
+      for (const cable of violations.slice(0, 10)) {
+        const cs = getCrossSection(cable, data.cableTypeDB);
+        results.push({
+          ruleId: 'CR31', ruleName: 'DNV 기관실 전력 케이블 최소 2.5mm²', category: 'Cable Sizing',
+          reference: 'DNV Rules Pt.4 Ch.8 Sec.3.4',
+          severity: 'major', status: 'fail',
+          message: `${cable.name}: 기관실 전력 케이블 단면적 ${cs}mm² < 최소 2.5mm²`,
+          details: `타입=${cable.type}, 단면적=${cs}mm²`,
+          affectedCables: [cable.id], affectedNodes: [],
+          recommendation: '기관실 내 전력 케이블은 진동 환경을 고려하여 최소 2.5mm² 이상을 사용하세요.',
+        });
+      }
+    } else {
+      results.push({
+        ruleId: 'CR31', ruleName: 'DNV 기관실 전력 케이블 최소 2.5mm²', category: 'Cable Sizing',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.3.4',
+        severity: 'major', status: 'pass',
+        message: '기관실 전력 케이블 최소 단면적 기준 충족',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR32: KR 조명 케이블 전압강하 4% 한도
+RULES.push({
+  id: 'CR32',
+  category: 'Cable Sizing',
+  name: 'KR 조명 케이블 전압강하 4% 한도',
+  description: 'KR 규칙에 따라 조명 회로의 전압강하는 4%를 초과할 수 없다 (일반 선급 6%보다 엄격).',
+  reference: 'KR Rules Part 6 Ch.2 Sec.5',
+  classSociety: 'KR',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const lightCables = data.cables.filter(c => estimateCableUsage(c) === 'lighting');
+
+    for (const cable of lightCables) {
+      const cs = getCrossSection(cable, data.cableTypeDB);
+      const len = cable.calculatedLength ?? cable.length ?? 0;
+      if (cs && cs > 0 && len > 30) {
+        const ratio = len / cs;
+        if (ratio > 25) { // KR은 4%로 더 엄격 → L/S 기준 25
+          results.push({
+            ruleId: 'CR32', ruleName: 'KR 조명 케이블 전압강하 4% 한도', category: 'Cable Sizing',
+            reference: 'KR Rules Part 6 Ch.2 Sec.5',
+            severity: 'major', status: 'warning',
+            message: `${cable.name}: 조명 케이블 L/S비율(${ratio.toFixed(1)})이 높아 KR 4% 한도 초과 우려`,
+            details: `길이=${len}m, 단면적=${cs}mm², L/S=${ratio.toFixed(1)}`,
+            affectedCables: [cable.id], affectedNodes: [],
+            recommendation: 'KR 규칙은 조명 회로 전압강하를 4%로 제한합니다. 단면적 증가를 검토하세요.',
+          });
+        }
+      }
+    }
+
+    if (results.length === 0) {
+      results.push({
+        ruleId: 'CR32', ruleName: 'KR 조명 케이블 전압강하 4% 한도', category: 'Cable Sizing',
+        reference: 'KR Rules Part 6 Ch.2 Sec.5',
+        severity: 'major', status: 'pass',
+        message: '조명 케이블 전압강하 KR 기준(4%) 충족',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR33: LR 도체 온도 등급 적합성
+RULES.push({
+  id: 'CR33',
+  category: 'Cable Sizing',
+  name: 'LR 도체 온도 등급 적합성',
+  description: 'LR Rules Part 6 Ch.2: 케이블 도체 온도 등급이 주변 환경 온도에 적합한지 확인. 기관실은 최소 85°C, 갑판 노출부 75°C 이상.',
+  reference: 'LR Rules Part 6 Ch.2 Sec.3',
+  classSociety: 'LR',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const erCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const fromN = findNode(cable.fromNode, data.nodes);
+      const toN = findNode(cable.toNode, data.nodes);
+      const passesER = (fromN && isEngineRoom(fromN)) || (toN && isEngineRoom(toN));
+      if (passesER) erCables.push(cable);
+    }
+
+    const nonRated = erCables.filter(c => {
+      const typeStr = `${c.type ?? ''}`.toUpperCase();
+      return !/85|90|105|110|EPR|XLPE|SILICONE|HT/i.test(typeStr);
+    });
+
+    if (nonRated.length > 0) {
+      results.push({
+        ruleId: 'CR33', ruleName: 'LR 도체 온도 등급 적합성', category: 'Cable Sizing',
+        reference: 'LR Rules Part 6 Ch.2 Sec.3',
+        severity: 'major', status: 'warning',
+        message: `기관실 케이블 ${nonRated.length}개에서 85°C 이상 온도 등급 미확인`,
+        details: nonRated.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: nonRated.slice(0, 20).map(c => c.id), affectedNodes: [],
+        recommendation: 'LR 규정상 기관실 케이블은 최소 85°C 절연 등급 케이블을 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR33', ruleName: 'LR 도체 온도 등급 적합성', category: 'Cable Sizing',
+        reference: 'LR Rules Part 6 Ch.2 Sec.3',
+        severity: 'major', status: erCables.length > 0 ? 'pass' : 'not_applicable',
+        message: erCables.length > 0 ? '기관실 케이블 온도 등급 확인 완료' : '기관실 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Voltage Drop ----------
+
+// CR34: IEC 60092 전압강하 상세 기준
+RULES.push({
+  id: 'CR34',
+  category: 'Voltage Drop',
+  name: 'IEC 60092 전압강하 기준 (동력 6%, 조명 3%)',
+  description: 'IEC 60092-352: 선박 전기 설비에서 동력 회로 전압강하 6%, 조명 회로 3%를 초과할 수 없다.',
+  reference: 'IEC 60092-352 Sec.5',
+  classSociety: 'COMMON',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const checked: { cable: CableData; usage: string; ratio: number; maxDrop: number }[] = [];
+
+    for (const cable of data.cables) {
+      const cs = getCrossSection(cable, data.cableTypeDB);
+      const len = cable.calculatedLength ?? cable.length ?? 0;
+      if (!cs || cs <= 0 || len <= 10) continue;
+
+      const usage = estimateCableUsage(cable);
+      const maxDrop = usage === 'lighting' ? 3 : 6;
+      const ratio = len / cs;
+      // 440V 기준 근사: lighting은 L/S > 18, power는 L/S > 35
+      const threshold = usage === 'lighting' ? 18 : 35;
+
+      if (ratio > threshold) {
+        checked.push({ cable, usage, ratio, maxDrop });
+      }
+    }
+
+    if (checked.length > 0) {
+      for (const { cable, usage, ratio, maxDrop } of checked.slice(0, 10)) {
+        results.push({
+          ruleId: 'CR34', ruleName: 'IEC 60092 전압강하 기준', category: 'Voltage Drop',
+          reference: 'IEC 60092-352 Sec.5',
+          severity: 'major', status: 'warning',
+          message: `${cable.name}(${usage}): L/S=${ratio.toFixed(1)} → ${maxDrop}% 초과 가능성`,
+          details: `용도=${usage}, 허용전압강하=${maxDrop}%, 길이=${cable.calculatedLength ?? cable.length}m`,
+          affectedCables: [cable.id], affectedNodes: [],
+          recommendation: `${usage === 'lighting' ? '조명' : '동력'} 회로 전압강하 ${maxDrop}% 이내 확인. 단면적 증가 또는 경로 단축 검토.`,
+        });
+      }
+    } else {
+      results.push({
+        ruleId: 'CR34', ruleName: 'IEC 60092 전압강하 기준', category: 'Voltage Drop',
+        reference: 'IEC 60092-352 Sec.5',
+        severity: 'major', status: 'pass',
+        message: '전압강하 기준 내 (조명 3%, 동력 6%)',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR35: SOLAS 비상 조명 회로 전압강하
+RULES.push({
+  id: 'CR35',
+  category: 'Voltage Drop',
+  name: 'SOLAS 비상 조명 전압강하 제한',
+  description: 'SOLAS Ch.II-1: 비상 조명 회로의 전압강하는 5%를 초과할 수 없다.',
+  reference: 'SOLAS Ch.II-1 Reg.42, IEC 60092-201',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const emergLightCables = data.cables.filter(c =>
+      isEmergencyCircuit(c) && estimateCableUsage(c) === 'lighting'
+    );
+
+    if (emergLightCables.length === 0) {
+      results.push({
+        ruleId: 'CR35', ruleName: 'SOLAS 비상 조명 전압강하 제한', category: 'Voltage Drop',
+        reference: 'SOLAS Ch.II-1 Reg.42, IEC 60092-201',
+        severity: 'critical', status: 'not_applicable',
+        message: '비상 조명 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+      return results;
+    }
+
+    for (const cable of emergLightCables) {
+      const cs = getCrossSection(cable, data.cableTypeDB);
+      const len = cable.calculatedLength ?? cable.length ?? 0;
+      if (cs && cs > 0 && len > 20) {
+        const ratio = len / cs;
+        if (ratio > 30) {
+          results.push({
+            ruleId: 'CR35', ruleName: 'SOLAS 비상 조명 전압강하 제한', category: 'Voltage Drop',
+            reference: 'SOLAS Ch.II-1 Reg.42, IEC 60092-201',
+            severity: 'critical', status: 'warning',
+            message: `${cable.name}: 비상 조명 케이블 L/S=${ratio.toFixed(1)} — 전압강하 5% 초과 우려`,
+            details: `길이=${len}m, 단면적=${cs}mm²`,
+            affectedCables: [cable.id], affectedNodes: [],
+            recommendation: '비상 조명 회로는 전압강하 5% 이내로 유지해야 합니다. 단면적 증가를 검토하세요.',
+          });
+        }
+      }
+    }
+
+    if (results.length === 0) {
+      results.push({
+        ruleId: 'CR35', ruleName: 'SOLAS 비상 조명 전압강하 제한', category: 'Voltage Drop',
+        reference: 'SOLAS Ch.II-1 Reg.42, IEC 60092-201',
+        severity: 'critical', status: 'pass',
+        message: `비상 조명 케이블 ${emergLightCables.length}개 전압강하 기준 양호`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Cable Routing ----------
+
+// CR36: DNV 케이블 경로 빌지/탱크탑 회피
+RULES.push({
+  id: 'CR36',
+  category: 'Cable Routing',
+  name: 'DNV 빌지/탱크탑 회피',
+  description: 'DNV Pt.4 Ch.8: 케이블은 빌지, 탱크탑 하부를 통과하지 않아야 한다. 불가피한 경우 방수 보호 조치 필수.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.9.2',
+  classSociety: 'DNV',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const bilgeCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const pathNodes = parsePath(cable);
+      const combined = `${cable.fromNode ?? ''} ${cable.toNode ?? ''} ${pathNodes.join(' ')}`.toUpperCase();
+      if (/BILGE|TANK\s*TOP|DOUBLE\s*BOTTOM|D\.?B/i.test(combined)) {
+        bilgeCables.push(cable);
+      }
+    }
+
+    if (bilgeCables.length > 0) {
+      results.push({
+        ruleId: 'CR36', ruleName: 'DNV 빌지/탱크탑 회피', category: 'Cable Routing',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.9.2',
+        severity: 'major', status: 'warning',
+        message: `${bilgeCables.length}개 케이블이 빌지/탱크탑 구역을 통과 — 방수 보호 확인 필요`,
+        details: bilgeCables.slice(0, 10).map(c => c.name ?? c.id).join(', '),
+        affectedCables: bilgeCables.map(c => c.id), affectedNodes: [],
+        recommendation: '빌지 및 탱크탑 하부 통과 케이블은 수밀 보호(conduit, 방수 재질)를 적용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR36', ruleName: 'DNV 빌지/탱크탑 회피', category: 'Cable Routing',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.9.2',
+        severity: 'major', status: 'pass',
+        message: '빌지/탱크탑 통과 케이블 없음',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR37: SOLAS 조타실 케이블 경로 이중화
+RULES.push({
+  id: 'CR37',
+  category: 'Cable Routing',
+  name: 'SOLAS 조타실 필수 서비스 이중화 경로',
+  description: 'SOLAS Ch.II-1 Reg.29.5: 조타기, 항해 장비 등 필수 서비스 케이블은 이중화 경로를 확보해야 한다.',
+  reference: 'SOLAS Ch.II-1 Reg.29.5',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const steeringCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /STEER|RUDDER|HELM|AUTOPILOT/i.test(combined);
+    });
+
+    if (steeringCables.length === 0) {
+      results.push({
+        ruleId: 'CR37', ruleName: 'SOLAS 조타실 필수 서비스 이중화 경로', category: 'Cable Routing',
+        reference: 'SOLAS Ch.II-1 Reg.29.5',
+        severity: 'critical', status: 'not_applicable',
+        message: '조타기 관련 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '조타기 케이블에 STEER/RUDDER 시스템 코드를 부여하세요.',
+      });
+      return results;
+    }
+
+    // 조타기 케이블이 1개뿐이면 이중화 미확보
+    if (steeringCables.length < 2) {
+      results.push({
+        ruleId: 'CR37', ruleName: 'SOLAS 조타실 필수 서비스 이중화 경로', category: 'Cable Routing',
+        reference: 'SOLAS Ch.II-1 Reg.29.5',
+        severity: 'critical', status: 'warning',
+        message: `조타기 케이블 ${steeringCables.length}개만 식별 — 이중화 경로 미확보 우려`,
+        details: steeringCables.map(c => c.name).join(', '),
+        affectedCables: steeringCables.map(c => c.id), affectedNodes: [],
+        recommendation: 'SOLAS 요구에 따라 조타기 전원 공급은 최소 2계통 독립 경로를 확보하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR37', ruleName: 'SOLAS 조타실 필수 서비스 이중화 경로', category: 'Cable Routing',
+        reference: 'SOLAS Ch.II-1 Reg.29.5',
+        severity: 'critical', status: 'pass',
+        message: `조타기 케이블 ${steeringCables.length}개 식별 — 이중화 확인`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR38: IEC 60092 수평 트레이 지지 간격
+RULES.push({
+  id: 'CR38',
+  category: 'Cable Routing',
+  name: 'IEC 수평 트레이 지지 간격 확인',
+  description: 'IEC 60092-352 Sec.9.5: 수평 케이블 트레이의 지지 간격은 최대 1.5m(일반), 1.0m(기관실)이어야 한다.',
+  reference: 'IEC 60092-352 Sec.9.5',
+  classSociety: 'COMMON',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // linkLength가 있는 노드에서 간격 추정
+    const longSpans = data.nodes.filter(n => {
+      const span = n.linkLength ?? 0;
+      const isER = isEngineRoom(n);
+      return span > (isER ? 1.0 : 1.5);
+    });
+
+    if (longSpans.length > 0) {
+      results.push({
+        ruleId: 'CR38', ruleName: 'IEC 수평 트레이 지지 간격 확인', category: 'Cable Routing',
+        reference: 'IEC 60092-352 Sec.9.5',
+        severity: 'minor', status: 'warning',
+        message: `${longSpans.length}개 노드 구간의 지지 간격이 기준 초과 (일반 1.5m, 기관실 1.0m)`,
+        details: longSpans.slice(0, 10).map(n =>
+          `${n.name}: ${n.linkLength?.toFixed(2)}m${isEngineRoom(n) ? '(기관실)' : ''}`
+        ).join('; '),
+        affectedCables: [], affectedNodes: longSpans.map(n => n.name),
+        recommendation: '수평 트레이 지지 간격을 기준 이내로 조정하세요 (일반 1.5m, 기관실 1.0m).',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR38', ruleName: 'IEC 수평 트레이 지지 간격 확인', category: 'Cable Routing',
+        reference: 'IEC 60092-352 Sec.9.5',
+        severity: 'minor', status: 'pass',
+        message: '수평 트레이 지지 간격 기준 충족',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Fire Safety ----------
+
+// CR39: IEC 60332 난연 시험 요구
+RULES.push({
+  id: 'CR39',
+  category: 'Fire Safety',
+  name: 'IEC 60332-3 번들 난연 시험',
+  description: 'IEC 60332-3: 트레이 내 다수 케이블 번들은 수직 연소 시험(번들 난연 시험)을 통과해야 한다.',
+  reference: 'IEC 60332-3, DNV Pt.4 Ch.8 Sec.2',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // 번들 난연 미확인 케이블 탐색
+    const nonFlameRetardant: CableData[] = [];
+    for (const cable of data.cables) {
+      const typeStr = `${cable.type ?? ''} ${cable.remark ?? ''}`.toUpperCase();
+      if (!/FR|FLAME|HF|LSZH|LSOH|SHF|LOW\s*SMOKE|FRNC|NHFR/i.test(typeStr)) {
+        nonFlameRetardant.push(cable);
+      }
+    }
+
+    if (nonFlameRetardant.length > 0) {
+      results.push({
+        ruleId: 'CR39', ruleName: 'IEC 60332-3 번들 난연 시험', category: 'Fire Safety',
+        reference: 'IEC 60332-3, DNV Pt.4 Ch.8 Sec.2',
+        severity: 'critical', status: 'warning',
+        message: `${nonFlameRetardant.length}개 케이블에서 난연(FR) 등급 표시 미확인`,
+        details: `선박용 케이블은 IEC 60332-3 번들 난연 시험을 통과해야 합니다. ` +
+                 nonFlameRetardant.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: nonFlameRetardant.slice(0, 30).map(c => c.id), affectedNodes: [],
+        recommendation: '모든 선박용 케이블은 IEC 60332-3 번들 난연 시험 합격 케이블을 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR39', ruleName: 'IEC 60332-3 번들 난연 시험', category: 'Fire Safety',
+        reference: 'IEC 60332-3, DNV Pt.4 Ch.8 Sec.2',
+        severity: 'critical', status: 'pass',
+        message: '모든 케이블에 난연 등급 확인됨',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR40: SOLAS 저독성/저연 케이블 요구
+RULES.push({
+  id: 'CR40',
+  category: 'Fire Safety',
+  name: 'SOLAS 저독성/저연 케이블 요구',
+  description: 'SOLAS Ch.II-2: 거주 구역 및 제어실 내 케이블은 저연/무할로겐(LSZH) 재질을 사용해야 한다.',
+  reference: 'SOLAS Ch.II-2 Reg.5, IEC 60092-360',
+  classSociety: 'COMMON',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const accommodationCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const fromN = findNode(cable.fromNode, data.nodes);
+      const toN = findNode(cable.toNode, data.nodes);
+      const combined = `${fromN?.deck ?? ''} ${fromN?.name ?? ''} ${toN?.deck ?? ''} ${toN?.name ?? ''}`.toUpperCase();
+      if (/ACCOM|CABIN|MESS|GALLEY|WHEEL|BRIDGE|CONTROL\s*ROOM|NAV/i.test(combined)) {
+        accommodationCables.push(cable);
+      }
+    }
+
+    if (accommodationCables.length === 0) {
+      results.push({
+        ruleId: 'CR40', ruleName: 'SOLAS 저독성/저연 케이블 요구', category: 'Fire Safety',
+        reference: 'SOLAS Ch.II-2 Reg.5, IEC 60092-360',
+        severity: 'major', status: 'not_applicable',
+        message: '거주 구역/제어실 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '거주 구역 노드에 ACCOM/CABIN 등의 정보를 부여하세요.',
+      });
+      return results;
+    }
+
+    const nonLSZH = accommodationCables.filter(c => {
+      const typeStr = `${c.type ?? ''} ${c.remark ?? ''}`.toUpperCase();
+      return !/LSZH|LSOH|HF|LOW\s*SMOKE|HFFR|SHF|NHFR/i.test(typeStr);
+    });
+
+    if (nonLSZH.length > 0) {
+      results.push({
+        ruleId: 'CR40', ruleName: 'SOLAS 저독성/저연 케이블 요구', category: 'Fire Safety',
+        reference: 'SOLAS Ch.II-2 Reg.5, IEC 60092-360',
+        severity: 'major', status: 'warning',
+        message: `거주 구역 케이블 ${nonLSZH.length}개에서 LSZH 표시 미확인`,
+        details: nonLSZH.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: nonLSZH.slice(0, 20).map(c => c.id), affectedNodes: [],
+        recommendation: '거주 구역/제어실 케이블은 LSZH(Low Smoke Zero Halogen) 재질을 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR40', ruleName: 'SOLAS 저독성/저연 케이블 요구', category: 'Fire Safety',
+        reference: 'SOLAS Ch.II-2 Reg.5, IEC 60092-360',
+        severity: 'major', status: 'pass',
+        message: `거주 구역 케이블 ${accommodationCables.length}개 LSZH 확인`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR41: IEC 60331 내화 시험 (비상 서비스)
+RULES.push({
+  id: 'CR41',
+  category: 'Fire Safety',
+  name: 'IEC 60331 내화 시험 (비상 서비스 케이블)',
+  description: 'IEC 60331: 비상 발전기, 비상 조명, 소방 펌프 등 비상 서비스 케이블은 화재 시 30분 이상 기능 유지 가능한 내화 케이블이어야 한다.',
+  reference: 'IEC 60331, DNV Pt.4 Ch.8 Sec.2.5',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const emergCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /EMERG|E\/G|EM\s*GEN|FIRE\s*PUMP|BILGE\s*PUMP|LIFE\s*BOAT|G\.?A\.|GENERAL\s*ALARM|SPRINKLER/i.test(combined);
+    });
+
+    if (emergCables.length === 0) {
+      results.push({
+        ruleId: 'CR41', ruleName: 'IEC 60331 내화 시험', category: 'Fire Safety',
+        reference: 'IEC 60331, DNV Pt.4 Ch.8 Sec.2.5',
+        severity: 'critical', status: 'not_applicable',
+        message: '비상 서비스 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+      return results;
+    }
+
+    const nonFireResist = emergCables.filter(c => {
+      const typeStr = `${c.type ?? ''} ${c.remark ?? ''}`.toUpperCase();
+      return !/FR\b|FIRE\s*RES|FE\d|CI\b|SHF.*FR|MICC|MINERAL/i.test(typeStr);
+    });
+
+    if (nonFireResist.length > 0) {
+      results.push({
+        ruleId: 'CR41', ruleName: 'IEC 60331 내화 시험', category: 'Fire Safety',
+        reference: 'IEC 60331, DNV Pt.4 Ch.8 Sec.2.5',
+        severity: 'critical', status: 'warning',
+        message: `비상 서비스 케이블 ${nonFireResist.length}개에서 IEC 60331 내화 등급 미확인`,
+        details: nonFireResist.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: nonFireResist.slice(0, 20).map(c => c.id), affectedNodes: [],
+        recommendation: '비상 서비스 케이블은 IEC 60331 내화 시험(30분 이상 기능 유지) 합격 케이블을 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR41', ruleName: 'IEC 60331 내화 시험', category: 'Fire Safety',
+        reference: 'IEC 60331, DNV Pt.4 Ch.8 Sec.2.5',
+        severity: 'critical', status: 'pass',
+        message: `비상 서비스 케이블 ${emergCables.length}개 내화 등급 확인`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR42: DNV 방화 구획 관통 양측 실링
+RULES.push({
+  id: 'CR42',
+  category: 'Fire Safety',
+  name: 'DNV 방화 구획 관통 양측 실링',
+  description: 'DNV Pt.4 Ch.8 Sec.9: A급 방화 구획 관통 시 양면 모두 방화 실링(fire stop)이 필요하며, MCT는 IMO 형식 승인 제품을 사용해야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.9.4',
+  classSociety: 'DNV',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const crossDeckCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const decks = new Set<string>();
+      const fromN = findNode(cable.fromNode, data.nodes);
+      const toN = findNode(cable.toNode, data.nodes);
+      if (fromN?.deck) decks.add(fromN.deck);
+      if (toN?.deck) decks.add(toN.deck);
+      const pathNodes = parsePath(cable);
+      for (const nd of pathNodes) {
+        const node = findNode(nd, data.nodes);
+        if (node?.deck) decks.add(node.deck);
+      }
+      if (decks.size > 1) crossDeckCables.push(cable);
+    }
+
+    if (crossDeckCables.length > 0) {
+      results.push({
+        ruleId: 'CR42', ruleName: 'DNV 방화 구획 관통 양측 실링', category: 'Fire Safety',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.9.4',
+        severity: 'critical', status: 'warning',
+        message: `${crossDeckCables.length}개 케이블이 구획 관통 — DNV 양면 방화 실링(MCT) 확인 필요`,
+        details: '관통부 양면에 IMO 형식 승인 MCT(Multi-Cable Transit)를 설치해야 합니다.',
+        affectedCables: crossDeckCables.slice(0, 30).map(c => c.id), affectedNodes: [],
+        recommendation: 'A급 방화 구획 관통부에 IMO 형식 승인 MCT를 양면 설치하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR42', ruleName: 'DNV 방화 구획 관통 양측 실링', category: 'Fire Safety',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.9.4',
+        severity: 'critical', status: 'not_applicable',
+        message: '데크 관통 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Grounding ----------
+
+// CR43: IEC 60092 선체 접지 시스템
+RULES.push({
+  id: 'CR43',
+  category: 'Grounding',
+  name: 'IEC 60092 선체 접지 시스템',
+  description: 'IEC 60092-202: 선박의 접지 시스템은 선체 귀선(hull return) 방식을 사용하지 않아야 하며, 별도 접지 도체를 사용해야 한다.',
+  reference: 'IEC 60092-202 Sec.8, SOLAS Ch.II-1 Reg.45',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // 접지선/어스 관련 케이블 확인
+    const earthCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.type ?? ''}`.toUpperCase();
+      return /EARTH|GND|GROUND|PE\b|PROT.*EARTH/i.test(combined);
+    });
+
+    results.push({
+      ruleId: 'CR43', ruleName: 'IEC 60092 선체 접지 시스템', category: 'Grounding',
+      reference: 'IEC 60092-202 Sec.8, SOLAS Ch.II-1 Reg.45',
+      severity: 'advisory', status: earthCables.length > 0 ? 'pass' : 'warning',
+      message: earthCables.length > 0
+        ? `접지 관련 케이블 ${earthCables.length}개 식별됨`
+        : '접지 도체(earth/ground) 케이블이 식별되지 않음 — 별도 접지 시스템 확인 필요',
+      details: 'IEC 60092-202에 따라 선체 귀선(hull return) 방식은 사용 금지이며, 별도 보호 접지 도체를 사용해야 합니다.',
+      affectedCables: earthCables.slice(0, 10).map(c => c.id), affectedNodes: [],
+      recommendation: earthCables.length > 0 ? '' : '접지 시스템 설계 도면을 확인하세요.',
+    });
+    return results;
+  },
+});
+
+// CR44: DNV 고전압 케이블 차폐 접지
+RULES.push({
+  id: 'CR44',
+  category: 'Grounding',
+  name: 'DNV 고전압 케이블 차폐 양측 접지',
+  description: 'DNV Pt.4 Ch.8 Sec.4: 고전압(1kV 이상) 케이블의 금속 차폐는 반드시 양쪽 끝에서 접지해야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.4.3',
+  classSociety: 'DNV',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const hvCables = data.cables.filter(c => estimateVoltageLevel(c) === 'HV');
+
+    if (hvCables.length === 0) {
+      results.push({
+        ruleId: 'CR44', ruleName: 'DNV 고전압 케이블 차폐 양측 접지', category: 'Grounding',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.4.3',
+        severity: 'critical', status: 'not_applicable',
+        message: '고전압 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+      return results;
+    }
+
+    const hvUnshielded = hvCables.filter(c => !isShieldedCable(c.type));
+
+    if (hvUnshielded.length > 0) {
+      results.push({
+        ruleId: 'CR44', ruleName: 'DNV 고전압 케이블 차폐 양측 접지', category: 'Grounding',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.4.3',
+        severity: 'critical', status: 'fail',
+        message: `고전압 케이블 ${hvUnshielded.length}개에 차폐(shield) 표시 없음 — 금속 차폐 필수`,
+        details: hvUnshielded.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: hvUnshielded.map(c => c.id), affectedNodes: [],
+        recommendation: '고전압 케이블은 금속 차폐가 필수이며, 양쪽 끝 접지해야 합니다.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR44', ruleName: 'DNV 고전압 케이블 차폐 양측 접지', category: 'Grounding',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.4.3',
+        severity: 'critical', status: 'pass',
+        message: `고전압 케이블 ${hvCables.length}개 차폐 확인`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '양쪽 끝 접지 시공을 현장에서 확인하세요.',
+      });
+    }
+    return results;
+  },
+});
+
+// CR45: KR 지락 보호 시스템
+RULES.push({
+  id: 'CR45',
+  category: 'Grounding',
+  name: 'KR 지락 보호 시스템',
+  description: 'KR Rules: 절연 감시 장치(IRM) 또는 지락 보호 시스템이 설치되어야 하며, 비접지 배전 계통에서는 지락 경보가 필수이다.',
+  reference: 'KR Rules Part 6 Ch.2 Sec.8',
+  classSociety: 'KR',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // IRM / earth fault 관련 케이블 확인
+    const irmCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /IRM|INSUL.*MONIT|EARTH.*FAULT|GROUND.*FAULT|GFP|EFD/i.test(combined);
+    });
+
+    results.push({
+      ruleId: 'CR45', ruleName: 'KR 지락 보호 시스템', category: 'Grounding',
+      reference: 'KR Rules Part 6 Ch.2 Sec.8',
+      severity: 'major', status: irmCables.length > 0 ? 'pass' : 'warning',
+      message: irmCables.length > 0
+        ? `절연 감시(IRM)/지락 보호 관련 케이블 ${irmCables.length}개 식별`
+        : '절연 감시(IRM) 또는 지락 보호 관련 케이블 미식별',
+      details: 'KR 규정상 비접지 계통에서 절연 감시 장치(IRM) 및 지락 경보 시스템이 필수입니다.',
+      affectedCables: irmCables.slice(0, 10).map(c => c.id), affectedNodes: [],
+      recommendation: irmCables.length > 0 ? '' : '절연 감시 장치(IRM) 설치를 확인하세요.',
+    });
+    return results;
+  },
+});
+
+// ---------- Category: Environmental ----------
+
+// CR46: IEC 60092 습윤 구역 케이블 보호
+RULES.push({
+  id: 'CR46',
+  category: 'Environmental',
+  name: 'IEC 60092 습윤 구역 케이블 보호',
+  description: 'IEC 60092-352: 갑판, 세탁실, 주방 등 습윤 구역의 케이블은 IP67 이상의 방수 보호 또는 방수형 케이블을 사용해야 한다.',
+  reference: 'IEC 60092-352 Sec.6.3',
+  classSociety: 'COMMON',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const wetAreaCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const fromN = findNode(cable.fromNode, data.nodes);
+      const toN = findNode(cable.toNode, data.nodes);
+      const combined = `${fromN?.name ?? ''} ${fromN?.deck ?? ''} ${toN?.name ?? ''} ${toN?.deck ?? ''} ${cable.fromNode ?? ''} ${cable.toNode ?? ''}`.toUpperCase();
+      if (/DECK|WEATHER|OPEN|LAUNDRY|GALLEY|WASH|BATH|WET|EXPOSED|OUTDOOR/i.test(combined)) {
+        wetAreaCables.push(cable);
+      }
+    }
+
+    if (wetAreaCables.length > 0) {
+      results.push({
+        ruleId: 'CR46', ruleName: 'IEC 60092 습윤 구역 케이블 보호', category: 'Environmental',
+        reference: 'IEC 60092-352 Sec.6.3',
+        severity: 'major', status: 'warning',
+        message: `습윤/노출 구역 케이블 ${wetAreaCables.length}개 — 방수 보호 확인 필요`,
+        details: wetAreaCables.slice(0, 10).map(c => c.name ?? c.id).join(', '),
+        affectedCables: wetAreaCables.slice(0, 20).map(c => c.id), affectedNodes: [],
+        recommendation: '습윤/노출 구역 케이블은 방수형 케이블 또는 IP67 이상 방수 보호를 적용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR46', ruleName: 'IEC 60092 습윤 구역 케이블 보호', category: 'Environmental',
+        reference: 'IEC 60092-352 Sec.6.3',
+        severity: 'major', status: 'not_applicable',
+        message: '습윤/노출 구역 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR47: DNV 해수 침수 구역 케이블 내식성
+RULES.push({
+  id: 'CR47',
+  category: 'Environmental',
+  name: 'DNV 해수 침수 구역 내식성',
+  description: 'DNV Pt.4 Ch.8: 해수에 노출될 가능성이 있는 구역의 케이블은 내식성(부식 방지) 외피를 사용해야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.2.3',
+  classSociety: 'DNV',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const seaAreaCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const pathStr = `${cable.fromNode ?? ''} ${cable.toNode ?? ''} ${cable.path ?? ''}`.toUpperCase();
+      if (/SEA\s*CHEST|VOID|CHAIN\s*LOCK|FORE\s*PEAK|AFT\s*PEAK|BALLAST|BOW\s*THRUST|STERN\s*TUBE/i.test(pathStr)) {
+        seaAreaCables.push(cable);
+      }
+    }
+
+    if (seaAreaCables.length > 0) {
+      results.push({
+        ruleId: 'CR47', ruleName: 'DNV 해수 침수 구역 내식성', category: 'Environmental',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.2.3',
+        severity: 'major', status: 'warning',
+        message: `해수 침수 가능 구역 케이블 ${seaAreaCables.length}개 — 내식성 외피 확인 필요`,
+        details: seaAreaCables.slice(0, 10).map(c => c.name ?? c.id).join(', '),
+        affectedCables: seaAreaCables.slice(0, 20).map(c => c.id), affectedNodes: [],
+        recommendation: '해수 침수 가능 구역 케이블은 내식성 외피(내해수성 재질)를 적용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR47', ruleName: 'DNV 해수 침수 구역 내식성', category: 'Environmental',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.2.3',
+        severity: 'major', status: 'not_applicable',
+        message: '해수 침수 구역 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Installation ----------
+
+// CR48: IEC 60092 케이블 굴곡 반경 (차폐 케이블)
+RULES.push({
+  id: 'CR48',
+  category: 'Installation',
+  name: 'IEC 차폐 케이블 최소 굴곡 반경 8D',
+  description: 'IEC 60092-352: 차폐(shielded) 케이블의 최소 굴곡 반경은 외경의 8배 이상이어야 한다. 비차폐 케이블은 6배.',
+  reference: 'IEC 60092-352 Sec.9.3',
+  classSociety: 'COMMON',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const shieldedLarge: { cable: CableData; od: number; minBend: number }[] = [];
+
+    for (const cable of data.cables) {
+      if (!isShieldedCable(cable.type)) continue;
+      const od = getOD(cable, data.cableTypeDB);
+      if (od > 20) {
+        shieldedLarge.push({ cable, od, minBend: od * 8 });
+      }
+    }
+
+    if (shieldedLarge.length > 0) {
+      results.push({
+        ruleId: 'CR48', ruleName: 'IEC 차폐 케이블 최소 굴곡 반경 8D', category: 'Installation',
+        reference: 'IEC 60092-352 Sec.9.3',
+        severity: 'minor', status: 'warning',
+        message: `OD 20mm 이상 차폐 케이블 ${shieldedLarge.length}개 — 최소 굴곡 반경 8×OD 확인 필요`,
+        details: shieldedLarge.slice(0, 10).map(s =>
+          `${s.cable.name}: OD=${s.od}mm → 최소 굴곡반경=${s.minBend}mm`
+        ).join('; '),
+        affectedCables: shieldedLarge.map(s => s.cable.id), affectedNodes: [],
+        recommendation: '차폐 케이블은 8×OD 이상의 굴곡 반경을 유지하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR48', ruleName: 'IEC 차폐 케이블 최소 굴곡 반경 8D', category: 'Installation',
+        reference: 'IEC 60092-352 Sec.9.3',
+        severity: 'minor', status: 'pass',
+        message: '대형 차폐 케이블 없음 또는 기준 충족',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR49: DNV 케이블 관통부(penetration) 실링
+RULES.push({
+  id: 'CR49',
+  category: 'Installation',
+  name: 'DNV 수밀/풍우밀 관통부 실링',
+  description: 'DNV Pt.4 Ch.8 Sec.9: 수밀 격벽 및 풍우밀 격벽의 케이블 관통부는 해당 등급의 수밀/풍우밀 실링이 필요하다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.9.3',
+  classSociety: 'DNV',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const crossBulkheadCables: CableData[] = [];
+
+    for (const cable of data.cables) {
+      const fromN = findNode(cable.fromNode, data.nodes);
+      const toN = findNode(cable.toNode, data.nodes);
+      // 구조가 다른 노드 사이를 지나는 케이블 → 격벽 관통 가능성
+      if (fromN?.structure && toN?.structure && fromN.structure !== toN.structure) {
+        crossBulkheadCables.push(cable);
+      }
+    }
+
+    if (crossBulkheadCables.length > 0) {
+      results.push({
+        ruleId: 'CR49', ruleName: 'DNV 수밀/풍우밀 관통부 실링', category: 'Installation',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.9.3',
+        severity: 'critical', status: 'warning',
+        message: `${crossBulkheadCables.length}개 케이블이 서로 다른 구조물 간 통과 — 관통부 실링 확인 필요`,
+        details: crossBulkheadCables.slice(0, 10).map(c =>
+          `${c.name}: ${findNode(c.fromNode, data.nodes)?.structure} → ${findNode(c.toNode, data.nodes)?.structure}`
+        ).join('; '),
+        affectedCables: crossBulkheadCables.slice(0, 30).map(c => c.id), affectedNodes: [],
+        recommendation: '수밀/풍우밀 격벽 관통 케이블에는 해당 등급의 관통 실링(cable gland, stuffing tube)을 설치하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR49', ruleName: 'DNV 수밀/풍우밀 관통부 실링', category: 'Installation',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.9.3',
+        severity: 'critical', status: 'not_applicable',
+        message: '격벽 관통 케이블 미식별 (structure 데이터 부족 가능)',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '노드에 structure 정보를 입력하면 관통부를 자동 감지할 수 있습니다.',
+      });
+    }
+    return results;
+  },
+});
+
+// CR50: LR 케이블 글랜드 사이즈 적합성
+RULES.push({
+  id: 'CR50',
+  category: 'Installation',
+  name: 'LR 케이블 글랜드 사이즈 적합성',
+  description: 'LR Rules: 케이블 글랜드(cable gland) 사이즈가 케이블 OD에 적합한지 확인.',
+  reference: 'LR Rules Part 6 Ch.2 Sec.6',
+  classSociety: 'LR',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const noGland: CableData[] = [];
+    const mismatch: { cable: CableData; od: number; gland: string }[] = [];
+
+    for (const cable of data.cables) {
+      const ct = data.cableTypeDB.find(t => t.cableType === cable.type);
+      if (!ct) continue;
+      const od = getOD(cable, data.cableTypeDB);
+      if (!ct.glandSize || ct.glandSize.trim() === '') {
+        noGland.push(cable);
+      } else {
+        // 글랜드 사이즈에서 숫자 추출하여 OD와 비교
+        const glandNum = parseFloat(ct.glandSize.replace(/[^0-9.]/g, ''));
+        if (!isNaN(glandNum) && od > 0 && (od < glandNum * 0.6 || od > glandNum * 1.1)) {
+          mismatch.push({ cable, od, gland: ct.glandSize });
+        }
+      }
+    }
+
+    if (mismatch.length > 0) {
+      results.push({
+        ruleId: 'CR50', ruleName: 'LR 케이블 글랜드 사이즈 적합성', category: 'Installation',
+        reference: 'LR Rules Part 6 Ch.2 Sec.6',
+        severity: 'minor', status: 'warning',
+        message: `${mismatch.length}개 케이블의 글랜드 사이즈가 OD와 불일치`,
+        details: mismatch.slice(0, 10).map(m =>
+          `${m.cable.name}: OD=${m.od}mm, 글랜드=${m.gland}`
+        ).join('; '),
+        affectedCables: mismatch.map(m => m.cable.id), affectedNodes: [],
+        recommendation: '케이블 OD에 맞는 글랜드 사이즈를 선정하세요.',
+      });
+    }
+
+    if (mismatch.length === 0) {
+      results.push({
+        ruleId: 'CR50', ruleName: 'LR 케이블 글랜드 사이즈 적합성', category: 'Installation',
+        reference: 'LR Rules Part 6 Ch.2 Sec.6',
+        severity: 'minor', status: data.cableTypeDB.length > 0 ? 'pass' : 'not_applicable',
+        message: data.cableTypeDB.length > 0 ? '글랜드 사이즈 적합성 확인' : 'CableType DB 없음',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: EMC ----------
+
+// CR51: IEC 60092 EMC 차폐 요구
+RULES.push({
+  id: 'CR51',
+  category: 'EMC',
+  name: 'IEC 60092 EMC 차폐 요구',
+  description: 'IEC 60092-504: 민감한 전자 장비(항해, 통신, 제어) 연결 케이블은 차폐(shielded) 케이블을 사용해야 한다.',
+  reference: 'IEC 60092-504, DNV Pt.4 Ch.8 Sec.10',
+  classSociety: 'COMMON',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const sensitiveCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /NAV|GPS|RADAR|ECDIS|AIS|VDR|GYRO|ECHO|COMM|RADIO|SATCOM|GMDSS|VHF|UHF/i.test(combined);
+    });
+
+    if (sensitiveCables.length === 0) {
+      results.push({
+        ruleId: 'CR51', ruleName: 'IEC 60092 EMC 차폐 요구', category: 'EMC',
+        reference: 'IEC 60092-504, DNV Pt.4 Ch.8 Sec.10',
+        severity: 'major', status: 'not_applicable',
+        message: '민감 전자장비 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+      return results;
+    }
+
+    const unshielded = sensitiveCables.filter(c => !isShieldedCable(c.type));
+
+    if (unshielded.length > 0) {
+      results.push({
+        ruleId: 'CR51', ruleName: 'IEC 60092 EMC 차폐 요구', category: 'EMC',
+        reference: 'IEC 60092-504, DNV Pt.4 Ch.8 Sec.10',
+        severity: 'major', status: 'warning',
+        message: `민감 장비 케이블 ${unshielded.length}개에 차폐 표시 없음`,
+        details: unshielded.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: unshielded.slice(0, 20).map(c => c.id), affectedNodes: [],
+        recommendation: '항해, 통신, 제어 장비 연결 케이블은 차폐(shielded) 케이블을 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR51', ruleName: 'IEC 60092 EMC 차폐 요구', category: 'EMC',
+        reference: 'IEC 60092-504, DNV Pt.4 Ch.8 Sec.10',
+        severity: 'major', status: 'pass',
+        message: `민감 장비 케이블 ${sensitiveCables.length}개 차폐 확인`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR52: DNV EMC 전력-신호 케이블 최소 이격 거리
+RULES.push({
+  id: 'CR52',
+  category: 'EMC',
+  name: 'DNV 전력-신호 케이블 이격 거리',
+  description: 'DNV Pt.4 Ch.8 Sec.10: 비차폐 전력 케이블과 신호/통신 케이블은 최소 200mm 이격하거나 격벽으로 분리해야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.10.3',
+  classSociety: 'DNV',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // 동일 노드를 공유하는 비차폐 전력 + 신호 케이블 탐색
+    const nodeMap = new Map<string, { unshieldedPower: CableData[]; signal: CableData[] }>();
+
+    for (const cable of data.cables) {
+      const pathNodes = parsePath(cable);
+      const power = isPowerCable(cable) && !isShieldedCable(cable.type);
+      const signal = isControlOrCommCable(cable);
+      if (!power && !signal) continue;
+
+      for (const nd of pathNodes) {
+        if (!nodeMap.has(nd)) nodeMap.set(nd, { unshieldedPower: [], signal: [] });
+        const entry = nodeMap.get(nd)!;
+        if (power) entry.unshieldedPower.push(cable);
+        if (signal) entry.signal.push(cable);
+      }
+    }
+
+    const violationNodes = Array.from(nodeMap.entries())
+      .filter(([, v]) => v.unshieldedPower.length > 0 && v.signal.length > 0);
+
+    if (violationNodes.length > 0) {
+      for (const [nodeName, { unshieldedPower, signal }] of violationNodes.slice(0, 10)) {
+        results.push({
+          ruleId: 'CR52', ruleName: 'DNV 전력-신호 케이블 이격 거리', category: 'EMC',
+          reference: 'DNV Rules Pt.4 Ch.8 Sec.10.3',
+          severity: 'major', status: 'warning',
+          message: `노드 ${nodeName}: 비차폐 전력(${unshieldedPower.length}개)과 신호(${signal.length}개) 케이블이 200mm 이격 미확인`,
+          details: `전력: ${unshieldedPower.slice(0, 3).map(c => c.name).join(', ')}; 신호: ${signal.slice(0, 3).map(c => c.name).join(', ')}`,
+          affectedCables: [...unshieldedPower.slice(0, 5), ...signal.slice(0, 5)].map(c => c.id),
+          affectedNodes: [nodeName],
+          recommendation: '비차폐 전력과 신호 케이블은 200mm 이상 이격하거나 금속 격벽으로 분리하세요.',
+        });
+      }
+    } else {
+      results.push({
+        ruleId: 'CR52', ruleName: 'DNV 전력-신호 케이블 이격 거리', category: 'EMC',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.10.3',
+        severity: 'major', status: 'pass',
+        message: '비차폐 전력-신호 케이블 혼재 노드 없음',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR53: IEC 전자기 적합성 주파수 변환기(VFD) 케이블
+RULES.push({
+  id: 'CR53',
+  category: 'EMC',
+  name: 'IEC VFD/인버터 출력 케이블 차폐',
+  description: 'IEC 60092-504: VFD(Variable Frequency Drive)/인버터 출력 케이블은 360° 차폐(braided shield)를 사용하고 양쪽 접지해야 한다.',
+  reference: 'IEC 60092-504 Sec.7, IEC 61800-3',
+  classSociety: 'COMMON',
+  severity: 'major',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const vfdCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /VFD|INVERTER|INV\b|FREQ.*CONV|DRIVE|AFE|PWM/i.test(combined);
+    });
+
+    if (vfdCables.length === 0) {
+      results.push({
+        ruleId: 'CR53', ruleName: 'IEC VFD/인버터 출력 케이블 차폐', category: 'EMC',
+        reference: 'IEC 60092-504 Sec.7, IEC 61800-3',
+        severity: 'major', status: 'not_applicable',
+        message: 'VFD/인버터 관련 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+      return results;
+    }
+
+    const unshielded = vfdCables.filter(c => !isShieldedCable(c.type));
+
+    if (unshielded.length > 0) {
+      results.push({
+        ruleId: 'CR53', ruleName: 'IEC VFD/인버터 출력 케이블 차폐', category: 'EMC',
+        reference: 'IEC 60092-504 Sec.7, IEC 61800-3',
+        severity: 'major', status: 'warning',
+        message: `VFD/인버터 케이블 ${unshielded.length}개에 차폐 표시 없음`,
+        details: unshielded.slice(0, 10).map(c => `${c.name}(${c.type})`).join(', '),
+        affectedCables: unshielded.map(c => c.id), affectedNodes: [],
+        recommendation: 'VFD 출력 케이블은 360° braided shield 차폐 케이블을 사용하고 양쪽 접지하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR53', ruleName: 'IEC VFD/인버터 출력 케이블 차폐', category: 'EMC',
+        reference: 'IEC 60092-504 Sec.7, IEC 61800-3',
+        severity: 'major', status: 'pass',
+        message: `VFD/인버터 케이블 ${vfdCables.length}개 차폐 확인`,
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Redundancy ----------
+
+// CR54: SOLAS 필수 서비스 전원 이중화
+RULES.push({
+  id: 'CR54',
+  category: 'Redundancy',
+  name: 'SOLAS 필수 서비스 전원 이중화',
+  description: 'SOLAS Ch.II-1 Reg.42: 조타기, 항해 장비, 소방 펌프 등 필수 서비스에는 주 배전반과 비상 배전반에서 각각 독립된 전원 공급이 필요하다.',
+  reference: 'SOLAS Ch.II-1 Reg.42',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const essentialSystems = ['STEER', 'FIRE PUMP', 'BILGE', 'NAV', 'COMM', 'EMERG'];
+
+    for (const sys of essentialSystems) {
+      const sysCables = data.cables.filter(c => {
+        const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+        return combined.includes(sys);
+      });
+
+      if (sysCables.length === 0) continue;
+
+      // 이 시스템에 MSB와 ESB 양쪽에서 전원이 공급되는지 확인
+      const fromMSB = sysCables.some(c => {
+        const combined = `${c.fromEquip ?? ''} ${c.fromNode ?? ''}`.toUpperCase();
+        return /MSB|MAIN\s*SW|M\.?S\.?B/i.test(combined);
+      });
+      const fromESB = sysCables.some(c => {
+        const combined = `${c.fromEquip ?? ''} ${c.fromNode ?? ''}`.toUpperCase();
+        return /ESB|EMERG|E\.?S\.?B/i.test(combined);
+      });
+
+      if (!fromMSB && !fromESB) continue; // 판별 불가
+
+      if (fromMSB && !fromESB) {
+        results.push({
+          ruleId: 'CR54', ruleName: 'SOLAS 필수 서비스 전원 이중화', category: 'Redundancy',
+          reference: 'SOLAS Ch.II-1 Reg.42',
+          severity: 'critical', status: 'warning',
+          message: `필수 서비스 '${sys}': MSB 전원만 확인, ESB 비상 전원 미식별`,
+          details: `${sys} 관련 케이블 ${sysCables.length}개`,
+          affectedCables: sysCables.slice(0, 10).map(c => c.id), affectedNodes: [],
+          recommendation: `${sys} 시스템에 ESB(비상 배전반)에서의 독립 전원 공급을 확인하세요.`,
+        });
+      }
+    }
+
+    if (results.length === 0) {
+      results.push({
+        ruleId: 'CR54', ruleName: 'SOLAS 필수 서비스 전원 이중화', category: 'Redundancy',
+        reference: 'SOLAS Ch.II-1 Reg.42',
+        severity: 'critical', status: 'not_applicable',
+        message: '필수 서비스 전원 이중화 자동 판별 불가 (데이터 부족)',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '필수 서비스 시스템별 MSB/ESB 전원 이중화를 수동 확인하세요.',
+      });
+    }
+    return results;
+  },
+});
+
+// CR55: DNV DP 선박 이중화 경로 (Dynamic Positioning)
+RULES.push({
+  id: 'CR55',
+  category: 'Redundancy',
+  name: 'DNV DP 선박 이중화 경로',
+  description: 'DNV Pt.4 Ch.8: DP(Dynamic Positioning) 선박에서 DP 시스템 케이블은 물리적으로 완전 분리된 이중화 경로를 사용해야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.5.4, IMO MSC/Circ.645',
+  classSociety: 'DNV',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const dpCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /DP\b|DYN.*POS|THRUSTER|AZIMUTH|POSITION.*REF|HPR|DGPS/i.test(combined);
+    });
+
+    if (dpCables.length === 0) {
+      results.push({
+        ruleId: 'CR55', ruleName: 'DNV DP 선박 이중화 경로', category: 'Redundancy',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.5.4, IMO MSC/Circ.645',
+        severity: 'critical', status: 'not_applicable',
+        message: 'DP 시스템 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+      return results;
+    }
+
+    results.push({
+      ruleId: 'CR55', ruleName: 'DNV DP 선박 이중화 경로', category: 'Redundancy',
+      reference: 'DNV Rules Pt.4 Ch.8 Sec.5.4, IMO MSC/Circ.645',
+      severity: 'critical', status: 'warning',
+      message: `DP 시스템 케이블 ${dpCables.length}개 식별 — A/B 시스템 간 물리적 경로 분리 확인 필요`,
+      details: dpCables.slice(0, 10).map(c => c.name ?? c.id).join(', '),
+      affectedCables: dpCables.map(c => c.id), affectedNodes: [],
+      recommendation: 'DP 시스템 A/B 이중화 케이블은 서로 다른 방화 구역을 통과하는 물리적으로 독립된 경로를 사용하세요.',
+    });
+    return results;
+  },
+});
+
+// CR56: SOLAS 비상 발전기 케이블 독립성
+RULES.push({
+  id: 'CR56',
+  category: 'Redundancy',
+  name: 'SOLAS 비상 발전기 케이블 독립성',
+  description: 'SOLAS Ch.II-1 Reg.44: 비상 발전기에서 비상 배전반까지의 케이블은 주 기관실을 관통하지 않아야 한다.',
+  reference: 'SOLAS Ch.II-1 Reg.44',
+  classSociety: 'COMMON',
+  severity: 'critical',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const egCables = data.cables.filter(c => {
+      const combined = `${c.system ?? ''} ${c.name ?? ''} ${c.fromEquip ?? ''} ${c.toEquip ?? ''}`.toUpperCase();
+      return /E\/G|EMERG.*GEN|EM\s*GEN|EMERG.*DIESEL/i.test(combined);
+    });
+
+    if (egCables.length === 0) {
+      results.push({
+        ruleId: 'CR56', ruleName: 'SOLAS 비상 발전기 케이블 독립성', category: 'Redundancy',
+        reference: 'SOLAS Ch.II-1 Reg.44',
+        severity: 'critical', status: 'not_applicable',
+        message: '비상 발전기 케이블 미식별',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '비상 발전기 케이블에 E/G 또는 EMERG GEN 시스템 코드를 부여하세요.',
+      });
+      return results;
+    }
+
+    for (const cable of egCables) {
+      const pathNodes = parsePath(cable);
+      const erNodes = pathNodes.filter(nd => {
+        const node = findNode(nd, data.nodes);
+        return node ? isEngineRoom(node) : false;
+      });
+
+      if (erNodes.length > 0) {
+        results.push({
+          ruleId: 'CR56', ruleName: 'SOLAS 비상 발전기 케이블 독립성', category: 'Redundancy',
+          reference: 'SOLAS Ch.II-1 Reg.44',
+          severity: 'critical', status: 'fail',
+          message: `${cable.name}: 비상 발전기 케이블이 기관실(${erNodes.join(', ')})을 통과`,
+          details: `경로: ${pathNodes.join(' → ')}`,
+          affectedCables: [cable.id], affectedNodes: erNodes,
+          recommendation: '비상 발전기 → ESB 케이블은 기관실을 통과하지 않는 경로를 사용해야 합니다.',
+        });
+      } else {
+        results.push({
+          ruleId: 'CR56', ruleName: 'SOLAS 비상 발전기 케이블 독립성', category: 'Redundancy',
+          reference: 'SOLAS Ch.II-1 Reg.44',
+          severity: 'critical', status: 'pass',
+          message: `${cable.name}: 비상 발전기 케이블 기관실 비통과 확인`,
+          details: '', affectedCables: [cable.id], affectedNodes: [],
+          recommendation: '',
+        });
+      }
+    }
+    return results;
+  },
+});
+
+// ---------- Category: Marking ----------
+
+// CR57: IEC 케이블 식별 마킹 체계
+RULES.push({
+  id: 'CR57',
+  category: 'Marking',
+  name: 'IEC 케이블 식별 마킹 체계',
+  description: 'IEC 60092-352 Sec.9.1: 모든 케이블은 양쪽 끝단에서 고유 식별 번호를 마킹해야 하며, 시스템 코드를 포함해야 한다.',
+  reference: 'IEC 60092-352 Sec.9.1',
+  classSociety: 'COMMON',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const noSystem = data.cables.filter(c => !c.system || c.system.trim() === '');
+
+    if (noSystem.length > 0) {
+      results.push({
+        ruleId: 'CR57', ruleName: 'IEC 케이블 식별 마킹 체계', category: 'Marking',
+        reference: 'IEC 60092-352 Sec.9.1',
+        severity: 'minor', status: 'warning',
+        message: `${noSystem.length}개 케이블에 시스템 코드(system) 미지정`,
+        details: noSystem.slice(0, 15).map(c => c.name ?? c.id).join(', '),
+        affectedCables: noSystem.slice(0, 30).map(c => c.id), affectedNodes: [],
+        recommendation: '모든 케이블에 시스템 코드(POWER, CTRL, COMM 등)를 부여하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR57', ruleName: 'IEC 케이블 식별 마킹 체계', category: 'Marking',
+        reference: 'IEC 60092-352 Sec.9.1',
+        severity: 'minor', status: 'pass',
+        message: '모든 케이블에 시스템 코드가 부여되어 있습니다.',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR58: KR 케이블 Tag Number 표준
+RULES.push({
+  id: 'CR58',
+  category: 'Marking',
+  name: 'KR 케이블 Tag Number 표준',
+  description: 'KR Rules: 케이블 Tag Number는 시스템-일련번호 형태를 따라야 하며, 도면과 현장이 일치해야 한다.',
+  reference: 'KR Rules Part 6 Ch.2 Sec.9',
+  classSociety: 'KR',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // Tag Number 패턴 검증: 최소 영문+숫자 포함
+    const badTag = data.cables.filter(c => {
+      if (!c.name) return true;
+      // 최소한 영문과 숫자가 포함되어야 함
+      return !/[A-Za-z]/.test(c.name) || !/[0-9]/.test(c.name);
+    });
+
+    if (badTag.length > 0) {
+      results.push({
+        ruleId: 'CR58', ruleName: 'KR 케이블 Tag Number 표준', category: 'Marking',
+        reference: 'KR Rules Part 6 Ch.2 Sec.9',
+        severity: 'minor', status: 'warning',
+        message: `${badTag.length}개 케이블의 Tag Number가 영문+숫자 조합이 아님`,
+        details: badTag.slice(0, 15).map(c => `"${c.name ?? '(없음)'}"`).join(', '),
+        affectedCables: badTag.map(c => c.id), affectedNodes: [],
+        recommendation: '케이블 Tag Number는 시스템코드+일련번호 형식(예: PWR-001, CTRL-123)을 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR58', ruleName: 'KR 케이블 Tag Number 표준', category: 'Marking',
+        reference: 'KR Rules Part 6 Ch.2 Sec.9',
+        severity: 'minor', status: 'pass',
+        message: '모든 케이블 Tag Number가 표준 형식을 따릅니다.',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR59: DNV 케이블 도면 번호(WD Page) 기재
+RULES.push({
+  id: 'CR59',
+  category: 'Marking',
+  name: 'DNV 케이블 도면 번호(WD Page) 기재',
+  description: 'DNV Pt.4 Ch.8: 각 케이블은 배선 도면(Wiring Diagram) 번호가 기재되어야 한다.',
+  reference: 'DNV Rules Pt.4 Ch.8 Sec.1.3',
+  classSociety: 'DNV',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    const noWD = data.cables.filter(c => !c.wdPage || c.wdPage.trim() === '');
+
+    if (noWD.length > 0 && noWD.length < data.cables.length) {
+      results.push({
+        ruleId: 'CR59', ruleName: 'DNV 케이블 도면 번호(WD Page) 기재', category: 'Marking',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.1.3',
+        severity: 'minor', status: 'warning',
+        message: `${noWD.length}개 케이블에 도면 번호(WD Page) 미기재`,
+        details: noWD.slice(0, 15).map(c => c.name ?? c.id).join(', '),
+        affectedCables: noWD.slice(0, 30).map(c => c.id), affectedNodes: [],
+        recommendation: '모든 케이블에 해당 배선 도면(WD) 번호를 기재하세요.',
+      });
+    } else if (noWD.length === 0) {
+      results.push({
+        ruleId: 'CR59', ruleName: 'DNV 케이블 도면 번호(WD Page) 기재', category: 'Marking',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.1.3',
+        severity: 'minor', status: 'pass',
+        message: '모든 케이블에 도면 번호가 기재되어 있습니다.',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR59', ruleName: 'DNV 케이블 도면 번호(WD Page) 기재', category: 'Marking',
+        reference: 'DNV Rules Pt.4 Ch.8 Sec.1.3',
+        severity: 'minor', status: 'not_applicable',
+        message: '도면 번호 데이터가 전혀 없음 (WD Page 필드 미사용)',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
+// CR60: LR 케이블 색상 코드 일관성
+RULES.push({
+  id: 'CR60',
+  category: 'Marking',
+  name: 'LR 케이블 색상 코드 일관성',
+  description: 'LR Rules Part 6 Ch.2: 동일 시스템의 케이블은 일관된 색상 코드를 사용해야 한다.',
+  reference: 'LR Rules Part 6 Ch.2 Sec.9',
+  classSociety: 'LR',
+  severity: 'minor',
+  check: (data) => {
+    const results: RuleCheckResult[] = [];
+    // 시스템별 색상 일관성 확인
+    const sysColorMap = new Map<string, Set<string>>();
+
+    for (const cable of data.cables) {
+      if (!cable.system || !cable.color) continue;
+      if (!sysColorMap.has(cable.system)) sysColorMap.set(cable.system, new Set());
+      sysColorMap.get(cable.system)!.add(cable.color);
+    }
+
+    const inconsistent = Array.from(sysColorMap.entries())
+      .filter(([, colors]) => colors.size > 3); // 동일 시스템에 3종 이상 색상이면 경고
+
+    if (inconsistent.length > 0) {
+      results.push({
+        ruleId: 'CR60', ruleName: 'LR 케이블 색상 코드 일관성', category: 'Marking',
+        reference: 'LR Rules Part 6 Ch.2 Sec.9',
+        severity: 'minor', status: 'warning',
+        message: `${inconsistent.length}개 시스템에서 케이블 색상 코드 불일치`,
+        details: inconsistent.slice(0, 10).map(([sys, colors]) =>
+          `${sys}: ${[...colors].join(', ')}`
+        ).join('; '),
+        affectedCables: [], affectedNodes: [],
+        recommendation: '동일 시스템의 케이블은 일관된 색상 코드를 사용하세요.',
+      });
+    } else {
+      results.push({
+        ruleId: 'CR60', ruleName: 'LR 케이블 색상 코드 일관성', category: 'Marking',
+        reference: 'LR Rules Part 6 Ch.2 Sec.9',
+        severity: 'minor', status: data.cables.some(c => c.color) ? 'pass' : 'not_applicable',
+        message: data.cables.some(c => c.color)
+          ? '시스템별 케이블 색상 코드 일관성 확인'
+          : '케이블 색상 데이터 없음',
+        details: '', affectedCables: [], affectedNodes: [],
+        recommendation: '',
+      });
+    }
+    return results;
+  },
+});
+
 // ─── 규칙 적용 필터링 ───────────────────────────────────────
 
 function isRuleApplicable(rule: ClassRule, society: ClassSociety): boolean {

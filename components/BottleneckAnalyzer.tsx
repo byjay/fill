@@ -19,7 +19,7 @@ import {
 interface BottleneckAnalyzerProps {
   cables: CableData[];
   nodes: NodeData[];
-  onApplyRouting: (newCables: CableData[]) => void;  // 결과 적용 콜백
+  onApplyRouting?: (newCables: CableData[]) => void;  // 결과 적용 콜백
 }
 
 // ── 병목 노드 상세 패널 ──────────────────────────────────────────
@@ -148,7 +148,7 @@ const BottleneckAnalyzer: React.FC<BottleneckAnalyzerProps> = ({
       };
     });
 
-    onApplyRouting(updatedCables);
+    onApplyRouting?.(updatedCables);
     setApplied(true);
   }, [cables, proposals, onApplyRouting]);
 
@@ -163,7 +163,7 @@ const BottleneckAnalyzer: React.FC<BottleneckAnalyzerProps> = ({
       optimizeBatchOrder: true,
     };
     const routed = smartRouteCables(cables, nodes, opts);
-    onApplyRouting(routed);
+    onApplyRouting?.(routed);
     setApplied(true);
   }, [cables, nodes, report, loadFactor, maxPerNode, maxDetour, systemSep, onApplyRouting]);
 

@@ -302,6 +302,7 @@ export function optimizeDrums(
     marginPercent?: number;
     cableTypeDB?: CableTypeData[];
     maxDrumLength?: number;
+    drumLengthByType?: Record<string, number>; // 타입별 조장길이
   },
 ): DrumReport {
   const algo = options?.algorithm ?? 'bfd';
@@ -344,10 +345,17 @@ export function optimizeDrums(
 
   for (const [groupKey, typeCables] of grouped) {
     const cableType = groupKey.split('|')[0]; // TYPE만 추출
-    // OD 기반 드럼 사이즈 결정: OD < 30mm → 1000m, OD ≥ 30mm → 500m
+    // 타입별 조장길이: drumLengthByType 우선 → OD 기반 기본값
+    const typeKey = cableType.trim().toUpperCase();
     const avgOd = typeCables.length > 0 ? typeCables.reduce((s, c) => s + c.od, 0) / typeCables.length : 0;
-    const maxDrumForType = avgOd >= 30 ? 500 : 1000;
+    const customDrumLen = options?.drumLengthByType?.[typeKey];
+    const maxDrumForType = customDrumLen ?? (avgOd >= 30 ? 500 : 1000);
     const effectiveDrums = drumLengths.filter(d => d <= Math.min(maxDrumLen, maxDrumForType));
+    // 커스텀 길이가 표준 목록에 없으면 추가
+    if (maxDrumForType > 0 && !effectiveDrums.includes(maxDrumForType)) {
+      effectiveDrums.push(maxDrumForType);
+      effectiveDrums.sort((a, b) => a - b);
+    }
 
     const result = optimizeSingleType(
       typeCables,

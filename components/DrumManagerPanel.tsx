@@ -26,6 +26,7 @@ interface DrumSettings {
   groupMode: GroupMode;
   algorithm: 'ffd' | 'bfd';
   marginPercent: number;
+  drumLengthByType: Record<string, number>; // 타입별 조장 길이
 }
 
 const DEFAULT_SETTINGS: DrumSettings = {
@@ -33,6 +34,7 @@ const DEFAULT_SETTINGS: DrumSettings = {
   groupMode: 'type',
   algorithm: 'bfd',
   marginPercent: 5,
+  drumLengthByType: {},
 };
 
 export default function DrumManagerPanel({ cables, cableTypeDB, onConfirmDrumAssignment }: Props) {
@@ -48,6 +50,46 @@ export default function DrumManagerPanel({ cables, cableTypeDB, onConfirmDrumAss
   const [selectedDrum, setSelectedDrum] = useState<CableDrum | null>(null);
   const [expandedType, setExpandedType] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+
+  // ── 프로젝트 내 사용 타입 + OD 목록 ──
+  const projectTypes = useMemo(() => {
+    const typeMap = new Map<string, { type: string; od: number; count: number }>();
+    const odFromDB = new Map<string, number>();
+    if (cableTypeDB) cableTypeDB.forEach(ct => odFromDB.set(ct.cableType.trim().toUpperCase(), ct.od));
+
+    for (const c of cables) {
+      const t = c.type || 'UNKNOWN';
+      const key = t.trim().toUpperCase();
+      if (!typeMap.has(key)) {
+        const od = c.od || odFromDB.get(key) || 0;
+        typeMap.set(key, { type: t, od, count: 0 });
+      }
+      typeMap.get(key)!.count += 1;
+    }
+    return Array.from(typeMap.values()).sort((a, b) => a.type.localeCompare(b.type));
+  }, [cables, cableTypeDB]);
+
+  // ── 타입별 기본 조장길이 초기화 (OD<30→1000, OD≥30→500) ──
+  useEffect(() => {
+    if (projectTypes.length === 0) return;
+    const existing = settings.drumLengthByType;
+    let needsUpdate = false;
+    const updated = { ...existing };
+    for (const pt of projectTypes) {
+      const key = pt.type.trim().toUpperCase();
+      if (!(key in updated)) {
+        updated[key] = pt.od >= 30 ? 500 : 1000;
+        needsUpdate = true;
+      }
+    }
+    if (needsUpdate) {
+      const ns = { ...settings, drumLengthByType: updated };
+      setSettings(ns);
+      try { localStorage.setItem('scms_drum_settings2', JSON.stringify(ns)); } catch {}
+    }
+  }, [projectTypes]);
+
+  const [showTypeTable, setShowTypeTable] = useState(false);
 
   const saveSettings = useCallback((s: DrumSettings) => {
     setSettings(s);
@@ -74,6 +116,7 @@ export default function DrumManagerPanel({ cables, cableTypeDB, onConfirmDrumAss
         marginPercent: cfg.marginPercent,
         cableTypeDB,
         maxDrumLength: Math.max(...drumLengths),
+        drumLengthByType: cfg.drumLengthByType,
       });
       setReport(result);
       setCalculating(false);
@@ -225,6 +268,68 @@ export default function DrumManagerPanel({ cables, cableTypeDB, onConfirmDrumAss
             className="px-2 py-0.5 bg-blue-600 text-white rounded text-[9px] font-bold">적용 & 재계산</button>
         </div>
       )}
+
+      {/* ── 타입별 조장 테이블 ── */}
+      <div className="shrink-0 border-b border-slate-700">
+        <button onClick={() => setShowTypeTable(v => !v)}
+          className="w-full flex items-center justify-between px-3 py-1.5 bg-slate-800/80 hover:bg-slate-800 transition-colors">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-cyan-400">📐 타입별 조장 설정</span>
+            <span className="text-[8px] text-slate-500">{projectTypes.length}종 | OD&lt;30mm→1000m, OD≥30mm→500m</span>
+          </div>
+          {showTypeTable ? <ChevronDown size={10} className="text-slate-500" /> : <ChevronRight size={10} className="text-slate-500" />}
+        </button>
+        {showTypeTable && (
+          <div className="max-h-60 overflow-y-auto bg-slate-950">
+            <table className="w-full text-[10px] border-collapse">
+              <thead className="sticky top-0 bg-slate-800 z-10">
+                <tr>
+                  <th className="px-2 py-1.5 text-left text-slate-400 font-bold border-b border-slate-700">Cable Type</th>
+                  <th className="px-2 py-1.5 text-right text-slate-400 font-bold border-b border-slate-700">OD (mm)</th>
+                  <th className="px-2 py-1.5 text-right text-slate-400 font-bold border-b border-slate-700">수량</th>
+                  <th className="px-2 py-1.5 text-center text-cyan-400 font-bold border-b border-slate-700">조장 (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projectTypes.map((pt, idx) => {
+                  const key = pt.type.trim().toUpperCase();
+                  const drumLen = settings.drumLengthByType[key] ?? (pt.od >= 30 ? 500 : 1000);
+                  return (
+                    <tr key={key} className={idx % 2 === 0 ? 'bg-slate-900' : 'bg-slate-900/60'}>
+                      <td className="px-2 py-1 text-white font-mono font-bold">{pt.type}</td>
+                      <td className={`px-2 py-1 text-right font-mono ${pt.od >= 30 ? 'text-orange-400' : 'text-emerald-400'}`}>{pt.od.toFixed(1)}</td>
+                      <td className="px-2 py-1 text-right text-slate-500">{pt.count}</td>
+                      <td className="px-2 py-1 text-center">
+                        <input
+                          type="number" min={50} step={50}
+                          value={drumLen}
+                          onChange={e => {
+                            const v = parseInt(e.target.value) || 500;
+                            saveSettings({
+                              ...settings,
+                              drumLengthByType: { ...settings.drumLengthByType, [key]: v },
+                            });
+                          }}
+                          className="w-16 px-1 py-0.5 bg-slate-800 border border-slate-600 rounded text-[10px] text-cyan-300 text-center font-mono font-bold"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="px-3 py-1.5 flex items-center gap-2">
+              <button onClick={() => {
+                const bulk: Record<string,number> = {};
+                projectTypes.forEach(pt => { bulk[pt.type.trim().toUpperCase()] = pt.od >= 30 ? 500 : 1000; });
+                saveSettings({ ...settings, drumLengthByType: bulk });
+              }} className="text-[9px] text-slate-400 hover:text-cyan-400 transition-colors">🔄 기본값 복원</button>
+              <button onClick={() => runOptimize(settings)}
+                className="ml-auto text-[9px] px-2 py-0.5 bg-blue-600 text-white rounded font-bold">적용 & 재계산</button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── 요약 KPI ── */}
       {summary && (

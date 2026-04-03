@@ -5,7 +5,7 @@ import TrayVisualizer from './TrayVisualizer';
 import { MapPin, Calculator, FileCode, Star, AlertTriangle, Zap, ChevronDown, ChevronUp, LayoutGrid, X } from 'lucide-react';
 
 // ─── TRAY TYPE 명명 ───────────────────────────────────────────────────────────
-const TRAY_LETTERS = 'ABCDEFHIJ'; // 1=A,2=B,...6=F,7=H,8=I,9=J (G 제외)
+const TRAY_LETTERS = 'ABCDEFGHI'; // 1=A,2=B,3=C,...9=I
 function getTrayTypeName(tiers: number, width: number): string {
   if (tiers < 1 || tiers > 9) return `L${tiers}-${width}`;
   return `L${TRAY_LETTERS[tiers - 1]}${width / 100}`;

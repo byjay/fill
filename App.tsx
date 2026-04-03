@@ -1625,7 +1625,8 @@ const AppRouter: React.FC = () => {
     setUser(info);
     saveSession(info);
     window.dispatchEvent(new CustomEvent('scms_user_changed', { detail: info.id }));
-    setScreen('projects');
+    // 관리자 → 관리자 페이지, 일반 → 프로젝트 선택
+    setScreen(isAdminGoogle ? 'admin' : 'projects');
   }, []);
 
   const handleLogout = useCallback(async () => {

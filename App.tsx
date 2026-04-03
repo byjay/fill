@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { CableData, NodeData, UserInfo, TrayFillSummary, CableTypeData } from './types';
+import { DEFAULT_CABLE_TYPE_DB } from './data/defaultCableTypes';
 import { calculateTrayFillAPI } from './services/apiClient';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import LoginScreen from './components/LoginScreen';
@@ -774,8 +775,13 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   const [cableTypeData, setCableTypeData] = useState<CableTypeData[]>(() => {
     try {
       const saved = localStorage.getItem('scms_cable_type_data');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { /* ignore */ }
+    // 저장된 데이터가 없으면 하드코딩 기본 DB 사용
+    return DEFAULT_CABLE_TYPE_DB;
   });
 
   const handleCableTypeDataChange = useCallback((data: CableTypeData[]) => {

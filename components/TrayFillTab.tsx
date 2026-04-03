@@ -1,8 +1,27 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { CableData, SystemResult, TrayFillSummary } from '../types';
+import { CableData, SystemResult, MatrixCell, TrayFillSummary } from '../types';
 import { solveSystem, solveSystemAtWidth } from '../services/solver';
 import TrayVisualizer from './TrayVisualizer';
-import { MapPin, Calculator, FileCode, Star, AlertTriangle, Zap } from 'lucide-react';
+import { MapPin, Calculator, FileCode, Star, AlertTriangle, Zap, ChevronDown, ChevronUp, LayoutGrid, X } from 'lucide-react';
+
+// ─── TRAY TYPE 명명 ───────────────────────────────────────────────────────────
+const TRAY_LETTERS = 'ABCDEFGHI';
+function getTrayTypeName(tiers: number, width: number): string {
+  if (tiers < 1 || tiers > 9) return `L${tiers}-${width}`;
+  return `L${TRAY_LETTERS[tiers - 1]}${width / 100}`;
+}
+
+// ─── TRAY SPEC TABLE (9단 × 8폭) ─────────────────────────────────────────────
+const TRAY_WIDTHS = [200, 300, 400, 500, 600, 700, 800, 900];
+const TRAY_INTERNAL_HEIGHT = 48; // mm (면적 기준 내부 높이)
+const TRAY_SPEC = Array.from({ length: 9 }, (_, levelIdx) =>
+  TRAY_WIDTHS.map(w => ({
+    type: `L${TRAY_LETTERS[levelIdx]}${w / 100}`,
+    level: levelIdx + 1,
+    width: w,
+    area: w * TRAY_INTERNAL_HEIGHT,
+  }))
+);
 
 interface TrayFillTabProps {
   cableData: CableData[];
@@ -30,6 +49,10 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
   const [systemResult, setSystemResult] = useState<SystemResult | null>(null);
   const [recommendedResult, setRecommendedResult] = useState<SystemResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+
+  // ── 신규 state: Details 토글, TRAY TYPE 팝업 ──
+  const [showDetails, setShowDetails] = useState(false);
+  const [showTraySpec, setShowTraySpec] = useState(false);
 
   // --- Path Analysis: Extract all unique nodes from all cables ---
   const nodeStats = useMemo(() => {
@@ -105,6 +128,31 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
       systemResult.tiers.length === recommendedResult.tiers.length
     );
   }, [systemResult, recommendedResult]);
+
+  // ── 듀얼 최적 설정 자동 탐색 ──
+  const dualConfigs = useMemo(() => {
+    if (!systemResult?.optimizationMatrix) return null;
+    const allOptimal: MatrixCell[] = [];
+    for (const row of systemResult.optimizationMatrix) {
+      for (const cell of row) {
+        if (cell.isOptimal) allOptimal.push(cell);
+      }
+    }
+    if (allOptimal.length === 0) return null;
+    // fill ratio 높은 순 (목표치에 가장 가까운 것)
+    allOptimal.sort((a, b) => b.fillRatio - a.fillRatio);
+    const primary = allOptimal[0];
+    // 다른 tier 수를 가진 차선책
+    const secondary = allOptimal.find(c => c.tiers !== primary.tiers) || null;
+    return { primary, secondary };
+  }, [systemResult]);
+
+  // ── 세컨더리 SystemResult 계산 ──
+  const secondaryResult = useMemo(() => {
+    if (!dualConfigs?.secondary || activeCables.length === 0) return null;
+    const { tiers, width } = dualConfigs.secondary;
+    return solveSystemAtWidth(activeCables, tiers, width, maxHeightLimit, fillRatioLimit);
+  }, [dualConfigs, activeCables, maxHeightLimit, fillRatioLimit]);
 
   const exportToDxf = () => {
     if (!systemResult) return;
@@ -252,7 +300,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
                         {preCalc ? (
                           <div className="flex items-center gap-2">
                             <span className={`text-[9px] font-bold ${selectedNode === node.name ? 'text-blue-100' : fillColor}`}>
-                              ▶ {preCalc.recommendedWidth}mm ({preCalc.fillRatio}% fill)
+                              ▶ {getTrayTypeName(1, preCalc.recommendedWidth)} {preCalc.recommendedWidth}mm ({preCalc.fillRatio}% fill)
                             </span>
                           </div>
                         ) : (
@@ -271,12 +319,10 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
         </div>
       </div>
 
-      {/* Change 3 + Change 4: Main panel — no blocking overlay since we auto-select on mount.
-          The "RECOMMENDED" badge is injected as an overlay on the visualizer when isRecommended. */}
       <div className="flex-1 flex flex-col relative bg-slate-100">
         {systemResult ? (
-          <div className="flex-1 relative overflow-hidden">
-            {/* Change 4: RECOMMENDED badge overlay */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* RECOMMENDED badge overlay */}
             {isRecommended && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
                 <div className="flex items-center gap-2 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-xl border border-emerald-400/50">
@@ -286,20 +332,64 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
                 </div>
               </div>
             )}
-            {/* Change 3: TrayVisualizer is wrapped in a container that forces it to fill the viewport.
-                The TrayVisualizer itself already uses SVG viewBox — we ensure the parent never clips it
-                by keeping overflow-hidden and letting the component fill naturally. */}
-            <div className="absolute inset-0 overflow-hidden">
-              <TrayVisualizer
-                systemResult={systemResult}
-                recommendedResult={recommendedResult}
-                fillRatioLimit={fillRatioLimit}
-                onApplyRecommendation={() => setManualWidth(null)}
-                onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
-                onExportHtml={() => {}}
-                onExportDxf={exportToDxf}
-              />
-            </div>
+
+            {/* ── 듀얼 레이아웃: 두 최적 설정 동시 표시 ── */}
+            {secondaryResult && dualConfigs?.secondary ? (
+              <div className="flex-1 flex flex-col gap-1 overflow-hidden">
+                {/* Config A: Primary */}
+                <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
+                  <TrayVisualizer
+                    systemResult={systemResult}
+                    recommendedResult={recommendedResult}
+                    fillRatioLimit={fillRatioLimit}
+                    onApplyRecommendation={() => setManualWidth(null)}
+                    onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
+                    onExportHtml={() => {}}
+                    onExportDxf={exportToDxf}
+                    compact
+                    trayTypeLabel={dualConfigs.primary ? getTrayTypeName(dualConfigs.primary.tiers, dualConfigs.primary.width) : undefined}
+                    showDetails={showDetails}
+                  />
+                </div>
+                {/* Config B: Secondary */}
+                <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
+                  <TrayVisualizer
+                    systemResult={secondaryResult}
+                    recommendedResult={null}
+                    fillRatioLimit={fillRatioLimit}
+                    onApplyRecommendation={() => {
+                      if (dualConfigs.secondary) {
+                        setNumberOfTiers(dualConfigs.secondary.tiers);
+                        setManualWidth(dualConfigs.secondary.width);
+                      }
+                    }}
+                    onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
+                    onExportHtml={() => {}}
+                    onExportDxf={exportToDxf}
+                    compact
+                    trayTypeLabel={getTrayTypeName(dualConfigs.secondary.tiers, dualConfigs.secondary.width)}
+                    showDetails={showDetails}
+                  />
+                </div>
+              </div>
+            ) : (
+              /* ── 단일 레이아웃: 기존 풀사이즈 ── */
+              <div className="flex-1 relative overflow-hidden">
+                <div className="absolute inset-0 overflow-hidden">
+                  <TrayVisualizer
+                    systemResult={systemResult}
+                    recommendedResult={recommendedResult}
+                    fillRatioLimit={fillRatioLimit}
+                    onApplyRecommendation={() => setManualWidth(null)}
+                    onMatrixCellClick={(t, w) => { setNumberOfTiers(t); setManualWidth(w); }}
+                    onExportHtml={() => {}}
+                    onExportDxf={exportToDxf}
+                    trayTypeLabel={systemResult ? getTrayTypeName(systemResult.tiers.length, systemResult.systemWidth) : undefined}
+                    showDetails={showDetails}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-600 gap-4 opacity-50 bg-slate-900">
@@ -334,10 +424,10 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
                   <span className="text-xs font-bold text-blue-400 bg-slate-800 px-2 py-1 rounded border border-slate-700 w-12 text-center">{fillRatioLimit}%</span>
                 </div>
               </div>
-              <div className="w-48">
+              <div className="w-64">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Tray Levels</label>
                 <div className="flex bg-slate-800 rounded p-1 border border-slate-700">
-                  {[1, 2, 3, 4, 5].map(t => (
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(t => (
                     <button key={t} onClick={() => setNumberOfTiers(t)} className={`flex-1 py-1 text-[10px] font-bold rounded transition-colors ${numberOfTiers === t ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>
                       L{t}
                     </button>
@@ -345,14 +435,103 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
                 </div>
               </div>
             </div>
-            <div className="shrink-0 text-right">
-              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Active Cables at Node</div>
-              <div className="text-2xl font-bold text-blue-400 leading-none">{activeCables.length} EA</div>
+            {/* Details 토글 + TRAY TYPE 버튼 */}
+            <div className="flex flex-col gap-2 items-center shrink-0">
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setShowDetails(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-bold transition-colors border ${
+                    showDetails
+                      ? 'bg-blue-600 text-white border-blue-500'
+                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  Details
+                </button>
+                <button
+                  onClick={() => setShowTraySpec(v => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200 transition-colors"
+                >
+                  <LayoutGrid size={12} />
+                  TRAY TYPE
+                </button>
+              </div>
+              <div className="text-right">
+                <div className="text-[9px] font-bold text-slate-500 uppercase">Active Cables</div>
+                <div className="text-xl font-bold text-blue-400 leading-none">{activeCables.length} EA</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
       </div>{/* end flex row */}
+
+      {/* ── TRAY TYPE 참조표 팝업 ── */}
+      {showTraySpec && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowTraySpec(false)}>
+          <div className="bg-slate-900 rounded-xl shadow-2xl border border-slate-700 max-w-3xl w-full mx-4 max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-800 border-b border-slate-700 sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <LayoutGrid size={16} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">TRAY TYPE SPECIFICATION</h3>
+              </div>
+              <button onClick={() => setShowTraySpec(false)} className="text-slate-400 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4">
+              <table className="w-full text-center border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="p-2 bg-slate-800 text-slate-400 font-bold border border-slate-700 sticky left-0">Level \ Width</th>
+                    {TRAY_WIDTHS.map(w => (
+                      <th key={w} className="p-2 bg-slate-800 text-slate-300 font-bold border border-slate-700">{w}mm</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {TRAY_SPEC.map((row, rIdx) => (
+                    <tr key={rIdx}>
+                      <td className="p-2 bg-slate-800 font-bold text-slate-300 border border-slate-700 sticky left-0">
+                        {rIdx + 1}단 ({TRAY_LETTERS[rIdx]})
+                      </td>
+                      {row.map(spec => {
+                        const isCurrentPrimary = systemResult && spec.level === systemResult.tiers.length && spec.width === systemResult.systemWidth;
+                        const isCurrentSecondary = secondaryResult && spec.level === secondaryResult.tiers.length && spec.width === secondaryResult.systemWidth;
+                        return (
+                          <td
+                            key={spec.type}
+                            className={`p-2 border border-slate-700 font-mono cursor-pointer transition-colors hover:bg-slate-600 ${
+                              isCurrentPrimary ? 'bg-blue-600 text-white font-bold ring-2 ring-blue-400' :
+                              isCurrentSecondary ? 'bg-emerald-600 text-white font-bold ring-2 ring-emerald-400' :
+                              'bg-slate-850 text-slate-300 hover:text-white'
+                            }`}
+                            onClick={() => {
+                              setNumberOfTiers(spec.level);
+                              setManualWidth(spec.width);
+                              setShowTraySpec(false);
+                            }}
+                          >
+                            <div className="font-bold text-[11px]">{spec.type}</div>
+                            <div className="text-[9px] opacity-70">{spec.area.toLocaleString()}</div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[10px] text-slate-500 mt-3 text-center">
+                TRAY AREA = Width × {TRAY_INTERNAL_HEIGHT}mm &nbsp;|&nbsp;
+                <span className="text-blue-400">■</span> 현재 Primary &nbsp;
+                <span className="text-emerald-400">■</span> 현재 Secondary &nbsp;|&nbsp;
+                셀 클릭 시 해당 설정으로 전환
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

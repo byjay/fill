@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CableData, NodeData, CableTypeData } from '../types';
-import { FileText, Layers, Download, Table2, Cpu, Info, Tag, Building2 } from 'lucide-react';
+import { FileText, Layers, Download, Table2, Cpu, Info, Tag, Building2, Circle } from 'lucide-react';
 
 interface Props {
   cables: CableData[];
@@ -8,7 +8,7 @@ interface Props {
   cableTypeDB?: CableTypeData[];
 }
 
-type ActiveBomTab = 'terminal' | 'tray' | 'procurement' | 'coaming' | 'tag';
+type ActiveBomTab = 'terminal' | 'tray' | 'procurement' | 'coaming' | 'tag' | 'gland';
 
 // ─── Terminal BOM ─────────────────────────────────────────────────────────────
 interface TerminalRow {
@@ -266,6 +266,118 @@ function buildProcurementBOM(cables: CableData[], cableTypeDB: CableTypeData[]):
     .sort((a, b) => a.cableType.localeCompare(b.cableType));
 }
 
+// ─── Cable Gland BOM ──────────────────────────────────────────────────────────
+interface GlandSpec {
+  type: string;
+  packId: number;
+  d: number;   // 내경 (mm)
+  l: number;   // 길이 (mm)
+}
+
+const GLAND_SPECS: GlandSpec[] = [
+  {type:'10A',packId:7,d:22,l:39},{type:'10B',packId:8,d:22,l:39},
+  {type:'15A',packId:9,d:28,l:42},{type:'15B',packId:10,d:28,l:42},{type:'15C',packId:11,d:28,l:42},
+  {type:'20A',packId:12,d:34,l:46},{type:'20B',packId:13,d:34,l:46},{type:'20C',packId:15,d:34,l:46},
+  {type:'25A',packId:16,d:42,l:53},{type:'25B',packId:18,d:42,l:53},{type:'25C',packId:20,d:42,l:53},
+  {type:'30A',packId:22,d:50,l:57},{type:'30B',packId:24,d:50,l:57},{type:'30C',packId:26,d:50,l:57},
+  {type:'35A',packId:28,d:56,l:61},{type:'35B',packId:30,d:56,l:61},
+  {type:'40A',packId:32,d:56,l:61},{type:'40B',packId:34,d:56,l:61},
+  {type:'45A',packId:36,d:70,l:71},{type:'45B',packId:38,d:70,l:71},{type:'45C',packId:40,d:70,l:71},
+  {type:'50A',packId:42,d:70,l:71},{type:'50B',packId:44,d:70,l:71},
+  {type:'55A',packId:46,d:86,l:83},{type:'55B',packId:48,d:86,l:83},{type:'55C',packId:50,d:86,l:83},
+  {type:'60A',packId:52,d:86,l:83},{type:'60B',packId:54,d:86,l:83},{type:'60C',packId:57,d:86,l:83},
+  {type:'65A',packId:58,d:100,l:103},{type:'65B',packId:60,d:100,l:103},
+  {type:'70A',packId:62,d:100,l:103},{type:'70B',packId:64,d:100,l:103},{type:'70C',packId:66,d:100,l:103},
+  {type:'75A',packId:66,d:100,l:103},{type:'75B',packId:68,d:100,l:103},{type:'75C',packId:71,d:100,l:103},
+  {type:'80A',packId:72,d:110,l:104},{type:'80B',packId:74,d:110,l:104},
+  {type:'85A',packId:76,d:110,l:104},{type:'85B',packId:78,d:110,l:104},
+  {type:'90A',packId:80,d:130,l:108},{type:'90B',packId:82,d:130,l:108},
+  {type:'95A',packId:84,d:130,l:108},{type:'95B',packId:86,d:130,l:108},
+  {type:'100A',packId:88,d:22,l:39},{type:'100B',packId:93,d:22,l:39},
+];
+
+// Unique D values sorted for OD matching
+const GLAND_D_VALUES = [...new Set(GLAND_SPECS.map(g => g.d))].sort((a, b) => a - b);
+
+// OD → 가장 가까운 큰 D → 해당 D의 첫번째 gland type
+function findGlandByOD(od: number): GlandSpec | null {
+  for (const d of GLAND_D_VALUES) {
+    if (d >= od) {
+      return GLAND_SPECS.find(g => g.d === d) || null;
+    }
+  }
+  // OD가 최대 D보다 크면 최대 D gland 반환
+  return GLAND_SPECS.find(g => g.d === GLAND_D_VALUES[GLAND_D_VALUES.length - 1]) || null;
+}
+
+// glandSize 문자열 → GlandSpec 매칭
+function findGlandByType(glandSize: string): GlandSpec | null {
+  if (!glandSize) return null;
+  const gs = glandSize.trim().toUpperCase();
+  return GLAND_SPECS.find(g => g.type === gs) || null;
+}
+
+interface GlandEquipRow {
+  equipment: string;
+  glandType: string;
+  d: number;
+  l: number;
+  packId: number;
+  quantity: number;
+  cables: string[];
+}
+
+function buildGlandBOM(cables: CableData[], cableTypeDB: CableTypeData[]): GlandEquipRow[] {
+  const typeMap = new Map<string, CableTypeData>();
+  for (const ct of cableTypeDB) typeMap.set(ct.cableType.trim().toUpperCase(), ct);
+
+  // 장비 → gland type → 집계
+  const equipMap = new Map<string, Map<string, { spec: GlandSpec; cables: string[] }>>();
+
+  const addEntry = (equip: string, spec: GlandSpec, cableName: string) => {
+    if (!equip) return;
+    if (!equipMap.has(equip)) equipMap.set(equip, new Map());
+    const gMap = equipMap.get(equip)!;
+    if (!gMap.has(spec.type)) gMap.set(spec.type, { spec, cables: [] });
+    gMap.get(spec.type)!.cables.push(cableName);
+  };
+
+  for (const cable of cables) {
+    const ctKey = (cable.type || '').trim().toUpperCase();
+    const ctData = typeMap.get(ctKey);
+
+    // 1차: cableTypeDB의 glandSize로 매칭
+    let spec = ctData?.glandSize ? findGlandByType(ctData.glandSize) : null;
+    // 2차: OD로 자동 매칭
+    if (!spec && cable.od > 0) spec = findGlandByOD(cable.od);
+    if (!spec) continue;
+
+    // FROM 장비
+    const fromEquip = cable.fromEquip || cable.fromNode || '';
+    // TO 장비
+    const toEquip = cable.toEquip || cable.toNode || '';
+
+    addEntry(fromEquip, spec, cable.name);
+    addEntry(toEquip, spec, cable.name);
+  }
+
+  const rows: GlandEquipRow[] = [];
+  for (const [equip, gMap] of equipMap) {
+    for (const [gType, entry] of gMap) {
+      rows.push({
+        equipment: equip,
+        glandType: gType,
+        d: entry.spec.d,
+        l: entry.spec.l,
+        packId: entry.spec.packId,
+        quantity: entry.cables.length,
+        cables: entry.cables,
+      });
+    }
+  }
+  return rows.sort((a, b) => a.equipment.localeCompare(b.equipment) || a.glandType.localeCompare(b.glandType));
+}
+
 // ─── CSV Export Helper ─────────────────────────────────────────────────────────
 function exportCSV(filename: string, headers: string[], rows: (string | number)[][]) {
   const bom = '\uFEFF'; // UTF-8 BOM for Korean characters in Excel
@@ -413,6 +525,7 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
   const procRows = useMemo(() => buildProcurementBOM(cables, cableTypeDB), [cables, cableTypeDB]);
   const coamingRows = useMemo(() => calcCoamingRows(coamingEntries, cableFillPct), [coamingEntries, cableFillPct]);
   const tagRows = useMemo(() => buildTagBOM(cables, nodes, includeCoamingTag), [cables, nodes, includeCoamingTag]);
+  const glandRows = useMemo(() => buildGlandBOM(cables, cableTypeDB), [cables, cableTypeDB]);
 
   // KPIs
   const totalTerminals = useMemo(() => terminalRows.reduce((s, r) => s + r.quantity, 0), [terminalRows]);
@@ -496,6 +609,17 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
     );
   };
 
+  const handleExportGland = () => {
+    exportCSV(
+      'cable_gland_bom.csv',
+      ['장비명','그랜드타입','D(mm)','L(mm)','Pack ID','수량(EA)','케이블목록'],
+      glandRows.map(r => [
+        r.equipment, r.glandType, r.d, r.l, r.packId,
+        r.quantity, r.cables.slice(0, 10).join(';'),
+      ])
+    );
+  };
+
   // ── Coaming helpers
   const updateCoamingEntry = (idx: number, field: keyof CoamingEntry, value: number) => {
     setCoamingEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
@@ -507,6 +631,7 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
     { key: 'procurement', label: '발주 BOM',   icon: <FileText size={14} /> },
     { key: 'coaming',     label: '코밍 BOM',   icon: <Building2 size={14} /> },
     { key: 'tag',         label: '네임태그 BOM', icon: <Tag size={14} /> },
+    { key: 'gland',       label: '그랜드 BOM',   icon: <Circle size={14} /> },
   ];
 
   // ── Coaming KPIs
@@ -518,6 +643,10 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
   // ── Tag KPIs
   const totalTagCount   = tagRows.reduce((s, r) => s + r.totalTagCount, 0);
   const totalCoamingTags = tagRows.reduce((s, r) => s + r.coamingTagCount, 0);
+  // ── Gland KPIs
+  const totalGlands     = glandRows.reduce((s, r) => s + r.quantity, 0);
+  const uniqueGlandTypes = new Set(glandRows.map(r => r.glandType)).size;
+  const uniqueEquipments = new Set(glandRows.map(r => r.equipment)).size;
 
   return (
     <div className="flex flex-col h-full bg-gray-900 text-gray-100 p-4 gap-4 overflow-auto">
@@ -1188,6 +1317,124 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
           <p className="text-xs text-gray-500">
             * 기본 2개: FROM端·TO端 각 1개. CTYPE 코밍 추가 시 케이블이 통과하는 코밍(type=C) 노드 수만큼 추가.
           </p>
+        </div>
+      )}
+
+      {/* ── 그랜드 BOM ─────────────────────────────────────────────── */}
+      {activeTab === 'gland' && (
+        <div className="flex flex-col gap-4">
+          {/* KPI */}
+          <div className="flex gap-3 flex-wrap">
+            <div className="bg-gray-800 rounded-lg px-5 py-3 flex flex-col items-center min-w-[130px]">
+              <span className="text-2xl font-bold text-blue-400">{totalGlands.toLocaleString()}</span>
+              <span className="text-xs text-gray-400 mt-0.5">총 그랜드 수 (EA)</span>
+            </div>
+            <div className="bg-gray-800 rounded-lg px-5 py-3 flex flex-col items-center min-w-[130px]">
+              <span className="text-2xl font-bold text-emerald-400">{uniqueGlandTypes}</span>
+              <span className="text-xs text-gray-400 mt-0.5">그랜드 규격 수</span>
+            </div>
+            <div className="bg-gray-800 rounded-lg px-5 py-3 flex flex-col items-center min-w-[130px]">
+              <span className="text-2xl font-bold text-orange-400">{uniqueEquipments}</span>
+              <span className="text-xs text-gray-400 mt-0.5">장비 수</span>
+            </div>
+          </div>
+
+          {/* Info */}
+          <div className="flex items-center gap-2 text-xs text-blue-300 bg-blue-900/20 border border-blue-800/40 rounded px-3 py-2">
+            <Info size={12} />
+            JIS Standard OSCG Type &nbsp;|&nbsp; Cable OD → D ≥ OD 최소 매칭 &nbsp;|&nbsp;
+            장비당 FROM·TO 양단 각 1EA
+          </div>
+
+          {/* Export */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleExportGland}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white rounded text-sm transition-colors"
+            >
+              <Download size={14} />
+              CSV 내보내기
+            </button>
+          </div>
+
+          {/* Table */}
+          {glandRows.length === 0 ? (
+            <div className="text-gray-500 text-sm text-center py-10">
+              케이블 데이터 또는 케이블타입 DB가 없습니다.
+            </div>
+          ) : (
+            <div className="overflow-auto rounded-lg border border-gray-700">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-800 text-gray-300 text-left">
+                    <th className="px-3 py-2 border-b border-gray-700 whitespace-nowrap">장비명</th>
+                    <th className="px-3 py-2 border-b border-gray-700 whitespace-nowrap">그랜드 타입</th>
+                    <th className="px-3 py-2 border-b border-gray-700 text-right whitespace-nowrap">D (mm)</th>
+                    <th className="px-3 py-2 border-b border-gray-700 text-right whitespace-nowrap">L (mm)</th>
+                    <th className="px-3 py-2 border-b border-gray-700 text-right whitespace-nowrap">Pack ID</th>
+                    <th className="px-3 py-2 border-b border-gray-700 text-right font-bold text-blue-300 whitespace-nowrap">수량 (EA)</th>
+                    <th className="px-3 py-2 border-b border-gray-700">케이블 목록</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {glandRows.map((row, idx) => (
+                    <tr key={`${row.equipment}-${row.glandType}-${idx}`}
+                        className={`${idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-850'} hover:bg-gray-700 transition-colors`}>
+                      <td className="px-3 py-2 border-b border-gray-800 text-gray-200 whitespace-nowrap text-xs font-bold">
+                        {row.equipment}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 font-mono text-blue-300 whitespace-nowrap font-bold">
+                        {row.glandType}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 text-right text-yellow-300 font-mono">
+                        {row.d}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 text-right text-gray-400 font-mono">
+                        {row.l}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 text-right text-gray-500 font-mono">
+                        {row.packId}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 text-right font-bold text-blue-300 text-base">
+                        {row.quantity.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 text-gray-500 text-xs max-w-xs truncate">
+                        {row.cables.slice(0, 5).join(', ')}
+                        {row.cables.length > 5 && <span className="text-gray-600"> +{row.cables.length - 5}개</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-800 font-semibold text-white">
+                    <td className="px-3 py-2 border-t border-gray-600">합계</td>
+                    <td className="px-3 py-2 border-t border-gray-600 text-gray-400">{uniqueGlandTypes}종</td>
+                    <td className="px-3 py-2 border-t border-gray-600" colSpan={3}></td>
+                    <td className="px-3 py-2 border-t border-gray-600 text-right text-blue-300 text-base font-bold">
+                      {totalGlands.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 border-t border-gray-600"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Gland 규격표 참조 */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <h4 className="text-xs font-bold text-gray-300 mb-2 uppercase">JIS Cable Gland D 규격 (OSCG Type)</h4>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {[22, 28, 34, 42, 50, 56, 70, 86, 100, 110, 130].map(d => {
+                const types = GLAND_SPECS.filter(g => g.d === d).map(g => g.type);
+                return (
+                  <div key={d} className="bg-gray-700 rounded px-2 py-1.5 flex flex-col items-center min-w-[60px]">
+                    <span className="text-yellow-300 font-bold font-mono">D{d}</span>
+                    <span className="text-gray-400 text-[9px] mt-0.5">{types[0]}~{types[types.length-1]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -179,7 +179,7 @@ export const calculateOptimizationMatrix = (
     targetFill: number
 ): MatrixCell[][] => {
     const widths = [200, 300, 400, 500, 600, 700, 800, 900];
-    const tierCounts = [1, 2, 3, 4, 5, 6];
+    const tierCounts = [1, 2, 3, 4, 5, 6, 7, 8, 9];
     const matrix: MatrixCell[][] = [];
 
     const totalCableArea = allCables.reduce((acc, c) => acc + Math.PI * Math.pow(c.od/2, 2), 0);

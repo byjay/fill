@@ -11,16 +11,22 @@ interface TrayVisualizerProps {
   onMatrixCellClick: (tiers: number, width: number) => void;
   onExportHtml: () => void;
   onExportDxf: () => void;
+  compact?: boolean;        // 컴팩트 모드: 사이드바·매트릭스 숨김, 헤더 축소
+  trayTypeLabel?: string;   // TRAY TYPE 라벨 (예: "LA4")
+  showDetails?: boolean;    // Summary/Matrix 표시 여부 (compact=false일 때만 유효)
 }
 
-const TrayVisualizer: React.FC<TrayVisualizerProps> = ({ 
-  systemResult, 
-  recommendedResult, 
+const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
+  systemResult,
+  recommendedResult,
   fillRatioLimit,
   onApplyRecommendation,
   onMatrixCellClick,
   onExportHtml,
-  onExportDxf
+  onExportDxf,
+  compact = false,
+  trayTypeLabel,
+  showDetails = true,
 }) => {
   // zoom===0 means "fit to viewport" (SVG uses width/height 100%)
   // zoom>0 means explicit pixel scaling with scroll
@@ -122,31 +128,43 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full bg-slate-100 gap-3 overflow-hidden">
+    <div className={`flex ${compact ? 'flex-col' : 'flex-col lg:flex-row'} h-full bg-slate-100 gap-3 overflow-hidden`}>
       <div className="flex-1 flex flex-col gap-3 h-full overflow-hidden">
         {/* Main Visualizer */}
         <div className="flex-1 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden relative flex flex-col">
-            
+
             {/* Dynamic Status Header */}
-            <div className={`${theme.bg} ${theme.text} p-4 shadow-md border-b ${theme.border} shrink-0 transition-colors duration-300`}>
+            <div className={`${theme.bg} ${theme.text} ${compact ? 'px-3 py-2' : 'p-4'} shadow-md border-b ${theme.border} shrink-0 transition-colors duration-300`}>
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                        <div className={`${theme.icon} p-2 rounded shadow-md transition-colors`}>
-                            {status === 'optimal' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                        <div className={`${theme.icon} ${compact ? 'p-1.5' : 'p-2'} rounded shadow-md transition-colors`}>
+                            {status === 'optimal' ? <CheckCircle2 size={compact ? 14 : 18} /> : <AlertTriangle size={compact ? 14 : 18} />}
                         </div>
                         <div>
-                            <h2 className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1">
-                                {status === 'optimal' ? 'System Optimized' : 'Attention Required'}
-                            </h2>
-                            <p className="text-lg font-black leading-none">
-                                {status === 'optimal' ? `W ${TRAY_WIDTH} mm` : message}
-                            </p>
+                            {trayTypeLabel && (
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded mr-2">{trayTypeLabel}</span>
+                            )}
+                            {compact ? (
+                                <span className="text-sm font-black leading-none">
+                                    W {TRAY_WIDTH}mm × L{TIER_COUNT} {status !== 'optimal' && <span className="text-xs opacity-80 ml-2">{message}</span>}
+                                </span>
+                            ) : (
+                                <>
+                                    <h2 className="text-[9px] font-black uppercase tracking-widest opacity-80 leading-none mb-1">
+                                        {status === 'optimal' ? 'System Optimized' : 'Attention Required'}
+                                    </h2>
+                                    <p className="text-lg font-black leading-none">
+                                        {status === 'optimal' ? `W ${TRAY_WIDTH} mm` : message}
+                                    </p>
+                                </>
+                            )}
                         </div>
                     </div>
-                    
+
+                    {!compact && (
                     <div className="flex items-center gap-2">
                         {status !== 'optimal' && recommendedResult && (
-                            <button 
+                            <button
                                 onClick={() => handleExternalAction(onApplyRecommendation)}
                                 className="flex items-center gap-2 bg-white text-slate-900 px-3 py-1.5 rounded shadow hover:bg-slate-100 transition-colors font-bold text-[10px] uppercase"
                             >
@@ -154,16 +172,16 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
                                 <ArrowRight size={12}/>
                             </button>
                         )}
-                        
+
                         <div className="flex gap-1.5">
-                            <button 
+                            <button
                                 onClick={() => handleExternalAction(onExportHtml)}
                                 className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1.5 rounded shadow transition-colors flex items-center gap-2 font-bold text-[10px] uppercase"
                                 title="Export Report to HTML"
                             >
                                 <Download size={12} /> HTML
                             </button>
-                            <button 
+                            <button
                                 onClick={() => handleExternalAction(onExportDxf)}
                                 className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1.5 rounded shadow transition-colors flex items-center gap-2 font-bold text-[10px] uppercase"
                                 title="Export to DXF (CAD)"
@@ -181,10 +199,12 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
                             </div>
                         )}
                     </div>
+                    )}
                 </div>
             </div>
 
-            {/* Calculation Breakdown Panel */}
+            {/* Calculation Breakdown Panel — hidden in compact or when showDetails=false */}
+            {!compact && showDetails && (
             <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap gap-3 shrink-0">
                 {systemResult.tiers.map((tier, idx) => (
                     <div key={idx} className="bg-white rounded border border-slate-200 p-2 shadow-sm flex flex-col gap-1 flex-1 min-w-[160px]">
@@ -207,6 +227,7 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
                     </div>
                 ))}
             </div>
+            )}
 
             <div className="flex-1 relative bg-white shadow-inner" style={{ overflow: zoom === 0 ? 'hidden' : 'auto' }}>
                 <div className="absolute top-2 right-2 flex gap-1.5 z-10">
@@ -346,8 +367,8 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
             </div>
         </div>
 
-        {/* Optimization Matrix Table */}
-        {systemResult.optimizationMatrix && (
+        {/* Optimization Matrix Table — hidden in compact or when showDetails=false */}
+        {!compact && showDetails && systemResult.optimizationMatrix && (
             <div className="h-48 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden flex flex-col shrink-0">
                 <div className="bg-slate-800 text-white p-2 px-3 border-b border-slate-700 flex items-center gap-2">
                     <Grid size={14} className="text-blue-400" />
@@ -393,6 +414,7 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
         )}
       </div>
 
+      {!compact && (
       <div className="w-full lg:w-48 flex flex-col bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden shrink-0">
         <div className="bg-slate-900 text-white p-3.5 flex items-center gap-2 border-b border-slate-800">
           <List size={14} className="text-blue-500" />
@@ -448,6 +470,7 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 };

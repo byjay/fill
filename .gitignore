@@ -24,3 +24,4 @@ old/
 *.njsproj
 *.sln
 *.sw?
+.github/

@@ -1,7 +1,9 @@
 import { CableData, PlacedCable, Point, SingleTrayResult, SystemResult, MatrixCell, MARGIN_X, MAX_PILE_WIDTH, PILE_GAP } from '../types';
 
-const MIN_WIDTH = 100;
-const MAX_WIDTH = 1000;
+// 표준 트레이 폭 (200~900mm만 허용, 100/1000 제거)
+const STANDARD_WIDTHS = [200, 300, 400, 500, 600, 700, 800, 900];
+const MIN_WIDTH = 200;
+const MAX_WIDTH = 900;
 const WIDTH_STEP = 100; // 100mm 단위
 const PHYSICAL_SIM_HEIGHT_LIMIT = 500; // Simulation allows stacking up to 500mm regardless of user setting (Soft Limit)
 
@@ -145,29 +147,29 @@ export const solveSingleTier = (
       };
   }
 
-  // 2. 자동 최적화
+  // 2. 자동 최적화 — 표준 트레이 폭만 사용 (200~900mm)
   const minTheoreticalWidth = (totalArea * 100) / (maxHeightLimit * targetFillRatioPercent);
-  const startWidth = Math.max(MIN_WIDTH, Math.ceil(minTheoreticalWidth / WIDTH_STEP) * WIDTH_STEP);
+  const candidateWidths = STANDARD_WIDTHS.filter(w => w >= Math.min(minTheoreticalWidth, MIN_WIDTH));
 
-  for (let w = startWidth; w <= MAX_WIDTH; w += WIDTH_STEP) {
+  for (const w of candidateWidths.length > 0 ? candidateWidths : STANDARD_WIDTHS) {
       const trayArea = w * maxHeightLimit;
       const fill = (totalArea / trayArea) * 100;
-      
+
       const res = attemptFit(cables, w);
-      
+
       if (res.success) {
           return {
-              tierIndex, width: w, cables: res.placed, success: true, 
+              tierIndex, width: w, cables: res.placed, success: true,
               fillRatio: fill, totalODSum, totalCableArea: totalArea, maxStackHeight: res.maxStackHeight
           };
       }
   }
 
-  // 실패 시 최대 폭
+  // 실패 시 최대 표준 폭 (900mm)
   const failRes = attemptFit(cables, MAX_WIDTH);
   return {
-      tierIndex, width: MAX_WIDTH, cables: failRes.placed, 
-      success: failRes.success && failRes.placed.length === cables.length, 
+      tierIndex, width: MAX_WIDTH, cables: failRes.placed,
+      success: failRes.success && failRes.placed.length === cables.length,
       fillRatio: (totalArea / (MAX_WIDTH * maxHeightLimit)) * 100,
       totalODSum, totalCableArea: totalArea, maxStackHeight: failRes.maxStackHeight
   };

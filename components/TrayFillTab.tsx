@@ -133,26 +133,35 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     );
   }, [systemResult, recommendedResult]);
 
-  // ── 듀얼 최적 설정 자동 탐색 (반드시 다른 단수) ──
+  // ── 듀얼 최적 설정 자동 탐색 (반드시 다른 단수, 등가 면적 매칭) ──
   const dualConfigs = useMemo(() => {
     if (!systemResult?.optimizationMatrix) return null;
-    // 모든 셀을 수집 (optimal 우선, 그 다음 success)
+
+    // 모든 optimal 또는 success 셀 수집
     const allCells: MatrixCell[] = [];
     for (const row of systemResult.optimizationMatrix) {
       for (const cell of row) {
-        allCells.push(cell);
+        if (cell.success && cell.fillRatio <= fillRatioLimit) allCells.push(cell);
       }
     }
-    // 1순위: isOptimal=true, 2순위: success=true & fillRatio <= limit
-    const optimal = allCells.filter(c => c.isOptimal).sort((a, b) => b.fillRatio - a.fillRatio);
-    const feasible = allCells.filter(c => c.success && c.fillRatio <= fillRatioLimit && !c.isOptimal)
-      .sort((a, b) => b.fillRatio - a.fillRatio);
-    const candidates = [...optimal, ...feasible];
-    if (candidates.length === 0) return null;
+    if (allCells.length === 0) return null;
 
-    const primary = candidates[0];
-    // 반드시 다른 단수! optimal 중에서 먼저 찾고, 없으면 feasible에서 찾기
-    const secondary = candidates.find(c => c.tiers !== primary.tiers) || null;
+    // fillRatio 높은 순 정렬 (가장 효율적인 것 = 목표치에 가장 가까운 것)
+    allCells.sort((a, b) => b.fillRatio - a.fillRatio);
+    const primary = allCells[0];
+
+    // Secondary: 반드시 다른 단수! 등가 면적(tier×width) 비슷한 것 우선
+    // 예: primary가 LA8(1×800=800) → LB4(2×400=800) 동일 면적
+    const primaryArea = primary.tiers * primary.width;
+    const otherTiers = allCells
+      .filter(c => c.tiers !== primary.tiers)
+      .map(c => ({ ...c, areaDiff: Math.abs(c.tiers * c.width - primaryArea) }))
+      .sort((a, b) => {
+        // 1순위: 면적 차이가 적은 것, 2순위: fillRatio 높은 것
+        if (a.areaDiff !== b.areaDiff) return a.areaDiff - b.areaDiff;
+        return b.fillRatio - a.fillRatio;
+      });
+    const secondary = otherTiers.length > 0 ? otherTiers[0] : null;
     return { primary, secondary };
   }, [systemResult, fillRatioLimit]);
 

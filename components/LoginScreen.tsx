@@ -82,7 +82,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   /* ── 비관리자 승인 요청 화면 ─────────────────────── */
   if (pendingUser) {
     return (
-      <div className="h-[100dvh] w-full flex flex-col bg-slate-900 overflow-hidden">
+      <div className="h-[100dvh] w-full flex items-center justify-center bg-slate-900 overflow-hidden">
+      <div className="h-full w-full max-w-[430px] flex flex-col bg-slate-900 overflow-hidden mx-auto border-x border-slate-800/50">
         <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
           <div className="text-center">
             <div className="text-3xl mb-2">🔐</div>
@@ -132,12 +133,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         </div>
         <style>{`@keyframes fadeInUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}`}</style>
       </div>
+      </div>
     );
   }
 
   /* ── 메인 로그인 화면 ─────────────────────────────── */
   return (
-    <div className="h-[100dvh] w-full flex flex-col bg-[#0f1829] overflow-hidden" style={{ animation: 'fadeInUp 0.3s ease' }}>
+    <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0f1829] overflow-hidden">
+    <div className="h-full w-full max-w-[430px] flex flex-col bg-[#0f1829] overflow-hidden mx-auto border-x border-slate-800/50" style={{ animation: 'fadeInUp 0.3s ease' }}>
 
       {/* 상단: 로고 */}
       <div className="shrink-0 flex items-center justify-center gap-3 px-6 pt-8 pb-5">
@@ -240,6 +243,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       <style>{`
         @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
       `}</style>
+    </div>
     </div>
   );
 };

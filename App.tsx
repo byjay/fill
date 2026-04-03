@@ -16,6 +16,17 @@ import BOMTab from './components/BOMTab';
 import AnalysisTab from './components/AnalysisTab';
 import ProjectTab from './components/ProjectTab';
 import CableTypeTab from './components/CableTypeTab';
+// ── 고급 메뉴 컴포넌트 ──
+import AdvancedMenuDropdown from './components/AdvancedMenuDropdown';
+import type { AdvancedTab as AdvMenuTab } from './components/AdvancedMenuDropdown';
+import InterferenceCheckTab from './components/InterferenceCheckTab';
+import VoltageDropTab from './components/VoltageDropTab';
+import ClassRuleTab from './components/ClassRuleTab';
+import BomAdvTab from './components/BomAdvTab';
+import DrumManagerPanel from './components/DrumManagerPanel';
+import DeckQtyTab from './components/DeckQtyTab';
+import BottleneckAnalyzer from './components/BottleneckAnalyzer';
+import KaveRouter from './components/KaveRouter';
 import {
   LayoutDashboard,
   List,
@@ -47,6 +58,7 @@ import {
 
 type AppScreen = 'login' | 'projects' | 'main';
 type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history' | 'project' | 'cabletype';
+type AdvancedTab = 'interference' | 'voltagedrop' | 'classrule' | 'bom-adv' | 'drum' | 'deck-qty' | 'bottleneck' | 'kave-router' | null;
 
 interface Snapshot {
   cables: CableData[];
@@ -602,6 +614,8 @@ interface TopToolbarProps {
   onExportNodeInfo: () => void;
   onJsonSave: () => void;
   onJsonLoad: (cables: CableData[], nodes: NodeData[]) => void;
+  advancedTab: AdvancedTab;
+  onAdvancedSelect: (tab: AdvMenuTab) => void;
 }
 
 const TopToolbar: React.FC<TopToolbarProps> = ({
@@ -609,6 +623,7 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onCalculateAllPaths, onExportAllData,
   onExportCableList, onExportNodeInfo,
   onJsonSave, onJsonLoad,
+  advancedTab, onAdvancedSelect,
 }) => {
   const { currentProject, updateCablesAndNodes } = useProject();
   const cables = currentProject?.cables ?? [];
@@ -706,6 +721,11 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
 
       <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
 
+      {/* ── 고급 메뉴 ── */}
+      <AdvancedMenuDropdown onSelect={onAdvancedSelect} activeTab={advancedTab as AdvMenuTab | null} />
+
+      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+
       {/* ── 파일 업로드 ── */}
       {btn(() => cableFileRef.current?.click(),
         cables.length > 0 ? `케이블 ${cables.length}` : '케이블↑',
@@ -768,8 +788,30 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
   const nodes = currentProject?.nodes ?? [];
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [advancedTab, setAdvancedTab] = useState<AdvancedTab>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // 고급 탭 선택 시 기본 탭 비활성화
+  const handleAdvancedSelect = useCallback((tab: AdvMenuTab) => {
+    setAdvancedTab(tab as AdvancedTab);
+  }, []);
+
+  // 기본 탭 선택 시 고급 탭 닫기
+  const handleTabChange = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+    setAdvancedTab(null);
+  }, []);
+
+  // ── 노드 에디터 콜백 ──
+  const handleNodeEdit = useCallback(async (nodeName: string, updates: Partial<import('./types').NodeData>) => {
+    const updatedNodes = nodes.map(n => n.name === nodeName ? { ...n, ...updates } : n);
+    await updateCablesAndNodes(cables, updatedNodes, `노드 수정: ${nodeName}`);
+  }, [cables, nodes, updateCablesAndNodes]);
+
+  const handleNodesUpdate = useCallback(async (newNodes: import('./types').NodeData[], description?: string) => {
+    await updateCablesAndNodes(cables, newNodes, description || '노드 일괄 업데이트');
+  }, [cables, updateCablesAndNodes]);
 
   // ── Cable Type 마스터 데이터 (프로젝트 독립 — localStorage 유지) ───────────
   const [cableTypeData, setCableTypeData] = useState<CableTypeData[]>(() => {
@@ -1386,13 +1428,15 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
       {/* ── Top Toolbar (탭 + 파일업로드 + 액션) ── */}
       <TopToolbar
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         onCalculateAllPaths={handleCalculateAllPaths}
         onExportAllData={handleExportAllData}
         onExportCableList={handleExportCableList}
         onExportNodeInfo={handleExportNodeInfo}
         onJsonSave={handleJsonSave}
         onJsonLoad={handleJsonLoad}
+        advancedTab={advancedTab}
+        onAdvancedSelect={handleAdvancedSelect}
       />
 
       {/* ── Body (사이드바/좌측nav 제거 → 전체폭) ── */}
@@ -1400,10 +1444,10 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
         {/* Main content */}
         <main className="h-full flex flex-col overflow-hidden bg-slate-950">
           <div className="flex-1 overflow-hidden flex flex-col">
-            {activeTab === 'dashboard' && (
+            {activeTab === 'dashboard' && !advancedTab && (
               <DashboardTab cableData={cables} nodeData={nodes} />
             )}
-            {activeTab === 'cables' && (
+            {activeTab === 'cables' && !advancedTab && (
               <CableListTab
                 cableData={cables}
                 onCalculateAllPaths={handleCalculateAllPaths}
@@ -1412,22 +1456,22 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
                 onRouteSingle={handleRouteSingle}
               />
             )}
-            {activeTab === 'nodes' && (
+            {activeTab === 'nodes' && !advancedTab && (
               <NodeInfoTab
                 nodeData={nodes}
                 cableData={cables}
                 onExportNodeInfo={handleExportNodeInfo}
               />
             )}
-            {activeTab === 'bom' && <BOMTab cableData={cables} />}
-            {activeTab === 'routing' && (
+            {activeTab === 'bom' && !advancedTab && <BOMTab cableData={cables} />}
+            {activeTab === 'routing' && !advancedTab && (
               <RoutingTab
                 cableData={cables}
                 onUpdateCheckNode={handleUpdateCheckNode}
                 onRecalculateSelected={handleRecalculateSelected}
               />
             )}
-            {activeTab === 'trayfill' && (
+            {activeTab === 'trayfill' && !advancedTab && (
                 <TrayFillTab
                   cableData={cables}
                   trayFillSummary={trayFillSummary}
@@ -1435,24 +1479,55 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
                   isTrayFillCalculating={isTrayFillCalculating}
                 />
               )}
-            {activeTab === '3d' && (
+            {activeTab === '3d' && !advancedTab && (
               <ThreeDViewTab cableData={cables} nodeData={nodes} />
             )}
-            {activeTab === 'analysis' && (
+            {activeTab === 'analysis' && !advancedTab && (
               <AnalysisTab cableData={cables} nodeData={nodes} />
             )}
-            {activeTab === 'history' && <HistoryTab />}
-            {activeTab === 'project' && (
+            {activeTab === 'history' && !advancedTab && <HistoryTab />}
+            {activeTab === 'project' && !advancedTab && (
               <ProjectTab
                 onExportCableList={handleExportCableList}
                 onExportNodeInfo={handleExportNodeInfo}
                 onJsonSave={handleJsonSave}
               />
             )}
-            {activeTab === 'cabletype' && (
+            {activeTab === 'cabletype' && !advancedTab && (
               <CableTypeTab
                 cableTypeData={cableTypeData}
                 onCableTypeDataChange={handleCableTypeDataChange}
+              />
+            )}
+
+            {/* ── 고급 메뉴 탭 렌더링 ── */}
+            {advancedTab === 'interference' && (
+              <InterferenceCheckTab cables={cables} nodes={nodes} />
+            )}
+            {advancedTab === 'voltagedrop' && (
+              <VoltageDropTab cables={cables} nodes={nodes} cableTypeDB={cableTypeData} />
+            )}
+            {advancedTab === 'classrule' && (
+              <ClassRuleTab cables={cables} nodes={nodes} cableTypeDB={cableTypeData} />
+            )}
+            {advancedTab === 'bom-adv' && (
+              <BomAdvTab cables={cables} nodes={nodes} cableTypeDB={cableTypeData} />
+            )}
+            {advancedTab === 'drum' && (
+              <DrumManagerPanel cables={cables} cableTypeDB={cableTypeData} />
+            )}
+            {advancedTab === 'deck-qty' && (
+              <DeckQtyTab cables={cables} nodes={nodes} />
+            )}
+            {advancedTab === 'bottleneck' && (
+              <BottleneckAnalyzer cables={cables} nodes={nodes} />
+            )}
+            {advancedTab === 'kave-router' && (
+              <KaveRouter
+                nodeData={nodes}
+                cableData={cables}
+                onNodeEdit={handleNodeEdit}
+                onNodesUpdate={handleNodesUpdate}
               />
             )}
           </div>

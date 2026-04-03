@@ -194,32 +194,45 @@ export function parseNodeSheet(rawData: unknown[][]): { nodes: NodeData[]; valid
 
 // ─── File Reader Utility ──────────────────────────────────────────────────────
 export function readExcelFile(file: File): Promise<unknown[][]> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
-      resolve(rawData);
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        if (!wb.SheetNames.length) { reject(new Error('시트가 없는 Excel 파일입니다')); return; }
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
+        resolve(rawData);
+      } catch (e) {
+        reject(new Error(`Excel 파싱 실패: ${e instanceof Error ? e.message : String(e)}`));
+      }
     };
+    reader.onerror = () => reject(new Error(`파일 읽기 실패: ${file.name}`));
+    reader.onabort = () => reject(new Error(`파일 읽기 중단: ${file.name}`));
     reader.readAsBinaryString(file);
   });
 }
 
 export function readExcelFileAllSheets(file: File): Promise<Record<string, unknown[][]>> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const result: Record<string, unknown[][]> = {};
-      wb.SheetNames.forEach(name => {
-        const ws = wb.Sheets[name];
-        result[name] = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
-      });
-      resolve(result);
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const result: Record<string, unknown[][]> = {};
+        wb.SheetNames.forEach(name => {
+          const ws = wb.Sheets[name];
+          result[name] = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
+        });
+        resolve(result);
+      } catch (e) {
+        reject(new Error(`Excel 파싱 실패: ${e instanceof Error ? e.message : String(e)}`));
+      }
     };
+    reader.onerror = () => reject(new Error(`파일 읽기 실패: ${file.name}`));
+    reader.onabort = () => reject(new Error(`파일 읽기 중단: ${file.name}`));
     reader.readAsBinaryString(file);
   });
 }

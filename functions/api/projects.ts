@@ -50,6 +50,10 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
 
     const { results } = await stmt.all();
 
+    const safeJson = (str: string, fallback: unknown = []) => {
+      try { return JSON.parse(str || String(fallback)); } catch { return fallback; }
+    };
+
     const projects = results.map((r: any) => ({
       id: r.id,
       userId: r.user_id,
@@ -57,9 +61,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
       vesselNo: r.vessel_no,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
-      cables: JSON.parse(r.cables_json || '[]'),
-      nodes: JSON.parse(r.nodes_json || '[]'),
-      history: JSON.parse(r.history_json || '[]'),
+      cables: safeJson(r.cables_json, []),
+      nodes: safeJson(r.nodes_json, []),
+      history: safeJson(r.history_json, []),
     }));
 
     return json(projects);

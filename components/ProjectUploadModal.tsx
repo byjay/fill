@@ -151,13 +151,20 @@ function parseNodes(raw: unknown[][]): NodeData[] {
 }
 
 function readXlsx(file: File): Promise<unknown[][]> {
-  return new Promise(res => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const wb = XLSX.read(e.target?.result, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      res(XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][]);
+      try {
+        const wb = XLSX.read(e.target?.result, { type: 'binary' });
+        if (!wb.SheetNames.length) { reject(new Error('시트가 없는 파일입니다')); return; }
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][]);
+      } catch (e) {
+        reject(new Error(`Excel 파싱 실패: ${e instanceof Error ? e.message : String(e)}`));
+      }
     };
+    reader.onerror = () => reject(new Error(`파일 읽기 실패: ${file.name}`));
+    reader.onabort = () => reject(new Error(`파일 읽기 중단: ${file.name}`));
     reader.readAsBinaryString(file);
   });
 }
@@ -202,32 +209,50 @@ export default function ProjectUploadModal({ onConfirm, onCancel }: Props) {
 
   const processCableFile = useCallback(async (file: File) => {
     setCableState(s => ({ ...s, file, loading: true }));
-    const raw = await readXlsx(file);
-    const headers = raw.length > 0 ? (raw[0] as string[]) : [];
-    const validation = validateCableHeaders(headers);
-    const data = parseCables(raw);
-    setCableState({ file, raw, data, validation, loading: false });
+    try {
+      const raw = await readXlsx(file);
+      const headers = raw.length > 0 ? (raw[0] as string[]) : [];
+      const validation = validateCableHeaders(headers);
+      const data = parseCables(raw);
+      setCableState({ file, raw, data, validation, loading: false });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCableState(s => ({ ...s, loading: false, validation: { errors: [msg], warnings: [] } }));
+    }
   }, []);
 
   const processNodeFile = useCallback(async (file: File) => {
     setNodeState(s => ({ ...s, file, loading: true }));
-    const raw = await readXlsx(file);
-    const headers = raw.length > 0 ? (raw[0] as string[]) : [];
-    const validation = validateNodeHeaders(headers);
-    const data = parseNodes(raw);
-    setNodeState({ file, raw, data, validation, loading: false });
+    try {
+      const raw = await readXlsx(file);
+      const headers = raw.length > 0 ? (raw[0] as string[]) : [];
+      const validation = validateNodeHeaders(headers);
+      const data = parseNodes(raw);
+      setNodeState({ file, raw, data, validation, loading: false });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setNodeState(s => ({ ...s, loading: false, validation: { errors: [msg], warnings: [] } }));
+    }
   }, []);
 
   const handleCableDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault(); setCableDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) processCableFile(file);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-excel')) {
+      processCableFile(file);
+    }
   }, [processCableFile]);
 
   const handleNodeDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault(); setNodeDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) processNodeFile(file);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-excel')) {
+      processNodeFile(file);
+    }
   }, [processNodeFile]);
 
   const canCreate = vesselName.trim() && cableState.data.length > 0 && nodeState.data.length > 0;
@@ -296,8 +321,8 @@ export default function ProjectUploadModal({ onConfirm, onCancel }: Props) {
       {/* Validation */}
       {state.validation.errors.length > 0 && (
         <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-2 space-y-1">
-          {state.validation.errors.map((e, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-[10px] text-red-400">
+          {state.validation.errors.map((e) => (
+            <div key={e} className="flex items-start gap-1.5 text-[10px] text-red-400">
               <AlertTriangle size={10} className="mt-0.5 shrink-0" /> {e}
             </div>
           ))}
@@ -305,8 +330,8 @@ export default function ProjectUploadModal({ onConfirm, onCancel }: Props) {
       )}
       {state.validation.warnings.length > 0 && (
         <div className="bg-amber-900/20 border border-amber-500/20 rounded-lg p-2 space-y-1">
-          {state.validation.warnings.map((w, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-[10px] text-amber-400">
+          {state.validation.warnings.map((w) => (
+            <div key={w} className="flex items-start gap-1.5 text-[10px] text-amber-400">
               <AlertTriangle size={10} className="mt-0.5 shrink-0" /> {w}
             </div>
           ))}

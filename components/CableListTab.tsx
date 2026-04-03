@@ -435,7 +435,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
                     {(() => {
                       const pathStr = cable.calculatedPath || cable.path || '';
                       if (!pathStr) return <span className="text-slate-600 italic">no path</span>;
-                      const pathNodes = pathStr.split(/[,→]/).map(s => s.trim()).filter(Boolean);
+                      const pathNodes = pathStr.split(/[,→>]/).map(s => s.trim()).filter(Boolean);
                       // 앞 2글자로 deck 그룹핑
                       const deckGroups: Record<string, string[]> = {};
                       const deckOrder: string[] = [];

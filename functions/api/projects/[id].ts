@@ -52,6 +52,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
 
     if (!row) return json({ error: 'Not found' }, 404);
 
+    const safeJson = (str: string, fallback: unknown = []) => {
+      try { return JSON.parse(str || String(fallback)); } catch { return fallback; }
+    };
     return json({
       id: row.id,
       userId: row.user_id,
@@ -59,9 +62,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       vesselNo: row.vessel_no,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      cables: JSON.parse(row.cables_json || '[]'),
-      nodes: JSON.parse(row.nodes_json || '[]'),
-      history: JSON.parse(row.history_json || '[]'),
+      cables: safeJson(row.cables_json, []),
+      nodes: safeJson(row.nodes_json, []),
+      history: safeJson(row.history_json, []),
     });
   }
 

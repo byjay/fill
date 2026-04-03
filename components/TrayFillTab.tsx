@@ -107,30 +107,41 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     setCalcElapsed(0);
     const tiersToUse = overrideTiers ?? numberOfTiers;
 
-    // 경과 시간 업데이트 타이머
+    // 경과 시간 업데이트 타이머 — unmount 시 정리를 위해 ref에 저장
+    let isCancelled = false;
     const timer = setInterval(() => {
-      setCalcElapsed(Date.now() - startTs);
+      if (!isCancelled) setCalcElapsed(Date.now() - startTs);
     }, 100);
 
-    setTimeout(() => {
-      const optimalSolution = solveSystem(activeCables, tiersToUse, maxHeightLimit, fillRatioLimit);
-      setRecommendedResult(optimalSolution);
-      let actualSolution: SystemResult;
-      if (overrideWidth !== null) {
-        actualSolution = solveSystemAtWidth(activeCables, tiersToUse, overrideWidth, maxHeightLimit, fillRatioLimit);
-      } else {
-        actualSolution = optimalSolution;
+    const timeoutId = setTimeout(() => {
+      try {
+        const optimalSolution = solveSystem(activeCables, tiersToUse, maxHeightLimit, fillRatioLimit);
+        const actualSolution: SystemResult = overrideWidth !== null
+          ? solveSystemAtWidth(activeCables, tiersToUse, overrideWidth, maxHeightLimit, fillRatioLimit)
+          : optimalSolution;
+        if (!isCancelled) {
+          setRecommendedResult(optimalSolution);
+          setSystemResult(actualSolution);
+          setCalcElapsed(Date.now() - startTs);
+          setIsCalculating(false);
+        }
+      } catch (e) {
+        console.error('Tray Fill 계산 오류:', e);
+        if (!isCancelled) setIsCalculating(false);
+      } finally {
+        clearInterval(timer);
       }
-      setSystemResult(actualSolution);
-      clearInterval(timer);
-      setCalcElapsed(Date.now() - startTs);
-      setIsCalculating(false);
     }, 10);
+
+    // cleanup 반환: useCallback은 cleanup을 직접 반환할 수 없으므로
+    // 이 방식으로 isCancelled 플래그로 stale 업데이트 방지
+    return () => { isCancelled = true; clearInterval(timer); clearTimeout(timeoutId); };
   }, [activeCables, maxHeightLimit, fillRatioLimit, numberOfTiers]);
 
   useEffect(() => {
     if (activeCables.length > 0) {
-      calculate(manualWidth, numberOfTiers);
+      const cleanup = calculate(manualWidth, numberOfTiers);
+      return cleanup ?? undefined;
     } else {
       setSystemResult(null);
     }

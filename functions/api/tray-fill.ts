@@ -79,8 +79,8 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
 
   if (!row) return json({ error: 'Project not found or access denied' }, 404);
 
-  const cables: { od?: number; path?: string; calculatedPath?: string }[] =
-    JSON.parse(row.cables_json || '[]');
+  let cables: { od?: number; path?: string; calculatedPath?: string }[] = [];
+  try { cables = JSON.parse(row.cables_json || '[]'); } catch { cables = []; }
 
   // ── 노드별 케이블 집계 ────────────────────────────────────────────────
   const nodeCables: Record<string, { od: number }[]> = {};

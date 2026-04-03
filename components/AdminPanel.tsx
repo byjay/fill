@@ -388,7 +388,7 @@ export default function AdminPanel({ userName, onLogout, onGoToProjects }: Props
   useEffect(() => {
     if (activeSection === 'users') loadUsers();
     if (activeSection === 'approvals') loadApprovals();
-  }, [activeSection]);
+  }, [activeSection, loadUsers, loadApprovals]);
 
   // 프로젝트 삭제
   const handleDeleteProject = async (id: string) => {

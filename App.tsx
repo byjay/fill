@@ -234,15 +234,20 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   const jsonLoadRef = useRef<HTMLInputElement>(null);
 
   const readExcelFile = (file: File): Promise<unknown[][]> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (evt) => {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
-        resolve(rawData);
+        try {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: 'binary' });
+          if (!wb.SheetNames.length) { reject(new Error('시트 없음')); return; }
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
+          resolve(rawData);
+        } catch (e) { reject(e); }
       };
+      reader.onerror = () => reject(new Error(`파일 읽기 실패: ${file.name}`));
+      reader.onabort = () => reject(new Error('파일 읽기 중단'));
       reader.readAsBinaryString(file);
     });
   };
@@ -250,46 +255,59 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   const handleCableFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const rawData = await readExcelFile(file);
-    const newCables = parseCableSheet(rawData);
-    await updateCablesAndNodes(newCables, nodes, `케이블 파일 업로드: ${file.name}`);
     e.target.value = '';
+    try {
+      const rawData = await readExcelFile(file);
+      const newCables = parseCableSheet(rawData);
+      await updateCablesAndNodes(newCables, nodes, `케이블 파일 업로드: ${file.name}`);
+    } catch (err) {
+      alert(`케이블 파일 읽기 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   const handleNodeFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const rawData = await readExcelFile(file);
-    const newNodes = parseNodeSheet(rawData);
-    await updateCablesAndNodes(cables, newNodes, `노드 파일 업로드: ${file.name}`);
     e.target.value = '';
+    try {
+      const rawData = await readExcelFile(file);
+      const newNodes = parseNodeSheet(rawData);
+      await updateCablesAndNodes(cables, newNodes, `노드 파일 업로드: ${file.name}`);
+    } catch (err) {
+      alert(`노드 파일 읽기 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   const handleBothFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      let newCables: CableData[] = cables;
-      let newNodes: NodeData[] = nodes;
-      wb.SheetNames.forEach(sheetName => {
-        const ws = wb.Sheets[sheetName];
-        const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
-        const lowerName = sheetName.toLowerCase();
-        if (lowerName.includes('cable') || lowerName.includes('케이블')) {
-          const parsed = parseCableSheet(rawData);
-          if (parsed.length > 0) newCables = parsed;
-        } else if (lowerName.includes('node') || lowerName.includes('노드')) {
-          const parsed = parseNodeSheet(rawData);
-          if (parsed.length > 0) newNodes = parsed;
-        }
-      });
-      await updateCablesAndNodes(newCables, newNodes, `통합 파일 업로드: ${file.name}`);
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        let newCables: CableData[] = cables;
+        let newNodes: NodeData[] = nodes;
+        wb.SheetNames.forEach(sheetName => {
+          const ws = wb.Sheets[sheetName];
+          const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
+          const lowerName = sheetName.toLowerCase();
+          if (lowerName.includes('cable') || lowerName.includes('케이블')) {
+            const parsed = parseCableSheet(rawData);
+            if (parsed.length > 0) newCables = parsed;
+          } else if (lowerName.includes('node') || lowerName.includes('노드')) {
+            const parsed = parseNodeSheet(rawData);
+            if (parsed.length > 0) newNodes = parsed;
+          }
+        });
+        await updateCablesAndNodes(newCables, newNodes, `통합 파일 업로드: ${file.name}`);
+      } catch (err) {
+        alert(`통합 파일 읽기 실패: ${err instanceof Error ? err.message : String(err)}`);
+      }
     };
+    reader.onerror = () => alert(`파일 읽기 실패: ${file.name}`);
     reader.readAsBinaryString(file);
-    e.target.value = '';
   };
 
   const handleJsonLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {

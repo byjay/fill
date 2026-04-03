@@ -312,27 +312,46 @@ export function optimizeDrums(
   // 시퀀스 리셋
   _drumSeq = 0;
 
-  // 타입별 그룹핑
-  const grouped = new Map<string, { name: string; length_m: number }[]>();
+  // OD 기반 드럼 사이즈 맵 (케이블타입 DB 참조)
+  const odMap = new Map<string, number>();
+  if (options?.cableTypeDB) {
+    for (const ct of options.cableTypeDB) {
+      odMap.set(ct.cableType.trim().toUpperCase(), ct.od);
+    }
+  }
+
+  // 타입별 그룹핑 (1.TYPE → 2.SYSTEM → 3.FROM → 4.TO → 5.장비별)
+  const grouped = new Map<string, { name: string; length_m: number; od: number }[]>();
   for (const c of cables) {
     const len = c.calculatedLength ?? c.length ?? 0;
     if (len <= 0) continue;
 
     const withMargin = len * (1 + margin / 100);
-    const key = c.type || 'UNKNOWN';
+    // 그룹키: TYPE | SYSTEM | FROM | TO
+    const sys = c.system || '';
+    const from = c.fromEquip || c.fromNode || '';
+    const to = c.toEquip || c.toNode || '';
+    const key = `${c.type || 'UNKNOWN'}|${sys}|${from}|${to}`;
+    const od = c.od || odMap.get((c.type || '').trim().toUpperCase()) || 0;
 
     if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push({ name: c.name, length_m: Math.round(withMargin * 100) / 100 });
+    grouped.get(key)!.push({ name: c.name, length_m: Math.round(withMargin * 100) / 100, od });
   }
 
   // 타입별 최적화
   const byType: DrumTypeReport[] = [];
   let globalDrumIdx = 1;
 
-  for (const [cableType, typeCables] of grouped) {
+  for (const [groupKey, typeCables] of grouped) {
+    const cableType = groupKey.split('|')[0]; // TYPE만 추출
+    // OD 기반 드럼 사이즈 결정: OD < 30mm → 1000m, OD ≥ 30mm → 500m
+    const avgOd = typeCables.length > 0 ? typeCables.reduce((s, c) => s + c.od, 0) / typeCables.length : 0;
+    const maxDrumForType = avgOd >= 30 ? 500 : 1000;
+    const effectiveDrums = drumLengths.filter(d => d <= Math.min(maxDrumLen, maxDrumForType));
+
     const result = optimizeSingleType(
       typeCables,
-      drumLengths.filter((d) => d <= maxDrumLen),
+      effectiveDrums.length > 0 ? effectiveDrums : [maxDrumForType],
       algo,
     );
 
@@ -343,7 +362,7 @@ export function optimizeDrums(
     }
 
     byType.push({
-      cableType,
+      cableType: groupKey, // TYPE|SYSTEM|FROM|TO 형태로 저장 → UI에서 분리 표시
       cables: typeCables,
       totalLength_m: Math.round(typeCables.reduce((s, c) => s + c.length_m, 0) * 100) / 100,
       optimization: result,

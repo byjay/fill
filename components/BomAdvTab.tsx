@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CableData, NodeData, CableTypeData } from '../types';
-import { FileText, Layers, Download, Table2, Cpu, Info, Tag, Building2, Circle } from 'lucide-react';
+import { FileText, Layers, Download, Table2, Cpu, Info, Tag, Building2, Circle, Link2 } from 'lucide-react';
 
 interface Props {
   cables: CableData[];
@@ -8,7 +8,7 @@ interface Props {
   cableTypeDB?: CableTypeData[];
 }
 
-type ActiveBomTab = 'terminal' | 'tray' | 'procurement' | 'coaming' | 'tag' | 'gland';
+type ActiveBomTab = 'terminal' | 'tray' | 'procurement' | 'coaming' | 'tag' | 'gland' | 'band';
 
 // ─── Terminal BOM ─────────────────────────────────────────────────────────────
 interface TerminalRow {
@@ -112,9 +112,10 @@ function buildTerminalBOM(cables: CableData[], cableTypeDB: CableTypeData[]): Te
     }
     if (conductorMm2 === null) continue; // 도체 크기 불명 → 스킵
 
-    // 코어수: 사용자 제공 맵 우선, 없으면 terminalCore 파싱값 사용
+    // 코어수 우선순위: 1)CABLE_CORE_MAP 2)ctData.terminalEa 3)parseCoreInfo 4)default 1
     const coreCount = CABLE_CORE_MAP[cable.type?.trim().toUpperCase() ?? '']
       ?? CABLE_CORE_MAP[cable.type ?? '']
+      ?? (ctData?.terminalEa != null && ctData.terminalEa > 0 ? ctData.terminalEa : null)
       ?? parsedCoreCount
       ?? 1;
 
@@ -404,16 +405,61 @@ interface CoamingEntry {
 }
 
 const INITIAL_COAMING_DATA: CoamingEntry[] = [
-  { name: 'CBP-100A', perUnitAreaMm2: 7850,   er: 10, ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-4',    perUnitAreaMm2: 49396,  er: 6,  ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-5',    perUnitAreaMm2: 59996,  er: 5,  ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-6',    perUnitAreaMm2: 70596,  er: 2,  ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-7',    perUnitAreaMm2: 81196,  er: 3,  ch: 4, acc: 40, depth: 144 },
-  { name: 'CBC-25',   perUnitAreaMm2: 133576, er: 4,  ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-27',   perUnitAreaMm2: 180776, er: 1,  ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-28',   perUnitAreaMm2: 204376, er: 10, ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-37',   perUnitAreaMm2: 257376, er: 1,  ch: 0, acc: 0,  depth: 144 },
-  { name: 'CBC-39',   perUnitAreaMm2: 324576, er: 1,  ch: 0, acc: 0,  depth: 144 },
+  // KP Series
+  { name: 'KP-50A',   perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KP-80A',   perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KP-100A',  perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KP-125A',  perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KP-150A',  perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  // KC Series
+  { name: 'KC-1',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-2',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-3',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-4',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-5',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-6',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-7',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-8',     perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-22',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-23',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-24',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-25',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-26',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-27',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-28',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-34',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-35',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-36',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-37',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'KC-38',    perUnitAreaMm2: 0,      er: 0, ch: 0, acc: 0, depth: 144 },
+  // CBP Series
+  { name: 'CBP-50A',  perUnitAreaMm2: 1960,   er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBP-80A',  perUnitAreaMm2: 5020,   er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBP-100A', perUnitAreaMm2: 7850,   er: 10, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBP-125A', perUnitAreaMm2: 12260,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBP-150A', perUnitAreaMm2: 17150,  er: 0, ch: 0, acc: 0, depth: 144 },
+  // CBC Series
+  { name: 'CBC-1',    perUnitAreaMm2: 17596,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-2',    perUnitAreaMm2: 28196,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-3',    perUnitAreaMm2: 38796,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-4',    perUnitAreaMm2: 49396,  er: 6, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-5',    perUnitAreaMm2: 59996,  er: 5, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-6',    perUnitAreaMm2: 70596,  er: 2, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-7',    perUnitAreaMm2: 81196,  er: 3, ch: 4, acc: 40, depth: 144 },
+  { name: 'CBC-8',    perUnitAreaMm2: 91796,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-22',   perUnitAreaMm2: 62776,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-23',   perUnitAreaMm2: 86376,  er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-24',   perUnitAreaMm2: 109976, er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-25',   perUnitAreaMm2: 133576, er: 4, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-26',   perUnitAreaMm2: 157176, er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-27',   perUnitAreaMm2: 180776, er: 1, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-28',   perUnitAreaMm2: 204376, er: 10, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-34',   perUnitAreaMm2: 156576, er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-35',   perUnitAreaMm2: 190176, er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-36',   perUnitAreaMm2: 223776, er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-37',   perUnitAreaMm2: 257376, er: 1, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-38',   perUnitAreaMm2: 290976, er: 0, ch: 0, acc: 0, depth: 144 },
+  { name: 'CBC-39',   perUnitAreaMm2: 324576, er: 1, ch: 0, acc: 0, depth: 144 },
 ];
 
 interface CoamingCalcRow {
@@ -434,11 +480,14 @@ function calcCoamingRows(entries: CoamingEntry[], cableFillPct: number): Coaming
   return entries.map(e => {
     const compoundQty = e.er + e.ch;
     const volumeMm3 = e.perUnitAreaMm2 * e.depth * compoundQty;
-    const volumeDm3 = volumeMm3 / 1_000_000;
-    const compoundWeightKg = volumeDm3 * (1 - cableFillPct / 100) * 2.0;
-    const sets = Math.ceil(compoundWeightKg / 12.5);
-    const powderKg = sets * 7.5;
-    const hardnerKg = sets * 5.0;
+    const adjustedVolume = volumeMm3 * (1 - cableFillPct / 100); // cable fill deduction
+    const volumeDm3 = adjustedVolume / 1_000_000;
+    // Formula from Excel: =totalVolume/1600000*2*1.2 (POWDER) and *0.8 (HARDNER)
+    // Reference box volume = 100×100×160 = 1,600,000 mm³
+    const powderKg = Math.round((adjustedVolume / 1_600_000) * 2 * 1.2 * 100) / 100;
+    const hardnerKg = Math.round((adjustedVolume / 1_600_000) * 2 * 0.8 * 100) / 100;
+    const compoundWeightKg = Math.round((powderKg + hardnerKg) * 100) / 100;
+    const sets = Math.ceil(compoundWeightKg / 2.0); // 1 set = 2.0 Kg total
     const manganaQty = e.acc;
     const manganaWeightKg = manganaQty * 0.84;
     return {
@@ -447,7 +496,7 @@ function calcCoamingRows(entries: CoamingEntry[], cableFillPct: number): Coaming
       er: e.er, ch: e.ch, acc: e.acc,
       compoundQty,
       volumeDm3: Math.round(volumeDm3 * 100) / 100,
-      compoundWeightKg: Math.round(compoundWeightKg * 100) / 100,
+      compoundWeightKg,
       sets,
       powderKg,
       hardnerKg,
@@ -489,7 +538,7 @@ function buildTagBOM(
     const coamingNodes = checkNodes.filter(n => coamingNodeSet.has(n));
 
     const baseTagCount = 2;
-    const coamingTagCount = coamingNodes.length;
+    const coamingTagCount = coamingNodes.length * 2;  // 2 tags per coaming node
     const totalTagCount = baseTagCount + (includeCoamingTag ? coamingTagCount : 0);
 
     const from = cable.fromEquip || cable.fromNode || cable.fromRoom || '';
@@ -510,13 +559,73 @@ function buildTagBOM(
   });
 }
 
+// ─── Cable Band & Tie BOM ────────────────────────────────────────────────────
+interface BandTieRow {
+  type: string;
+  category: 'Band' | 'Tie';
+  quantity: number;
+}
+
+const BAND_TYPES = [
+  'BAND BUCKLE W/TAPE SUS316 WITH PVC',
+  "BAND BUCKLE W/TAPE GAL'V STEEL WITHOUT PVC",
+  "BAND BUCKLE W/TAPE GAL'V STEEL WITH PVC",
+];
+
+const TIE_TYPES: { name: string; pct: number }[] = [
+  { name: 'CABLE TIE SUS316 4.6W X 200L', pct: 0.03 },
+  { name: 'CABLE TIE SUS316 4.6W X 360L', pct: 0.03 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 3.6W X 140L', pct: 0.20 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 4.5W X 190L', pct: 0.15 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 4.8W X 270L', pct: 0.30 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 4.8W X 370L', pct: 0.20 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 9.0W X 530L', pct: 0.03 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 12.7W X 300L', pct: 0.03 },
+  { name: 'CABLE TIE FLAME RETARDANT TYPE NYLON-6.6 12.7W X 540L', pct: 0.03 },
+];
+
+function buildBandTieBOM(cables: CableData[]): { rows: BandTieRow[]; totalLength: number; bandCount: number; tieCount: number } {
+  const totalLength = cables.reduce((s, c) => s + (c.calculatedLength ?? c.length ?? 0), 0);
+
+  // CABLE BAND (30%)
+  const totalBandCount = Math.round(totalLength * 0.30);
+  const perBandType = Math.round(totalBandCount / 3);
+  const bandRows: BandTieRow[] = BAND_TYPES.map(name => ({
+    type: name,
+    category: 'Band' as const,
+    quantity: perBandType,
+  }));
+
+  // CABLE TIE (70%)
+  const totalTieCount = Math.round(totalLength * 0.70);
+  const tieRows: BandTieRow[] = TIE_TYPES.map(t => ({
+    type: t.name,
+    category: 'Tie' as const,
+    quantity: Math.round(totalTieCount * t.pct),
+  }));
+
+  // Also include band buckle types in the tie section
+  const tieBandRows: BandTieRow[] = BAND_TYPES.map(name => ({
+    type: name,
+    category: 'Tie' as const,
+    quantity: perBandType,
+  }));
+
+  return {
+    rows: [...bandRows, ...tieRows, ...tieBandRows],
+    totalLength: Math.round(totalLength * 10) / 10,
+    bandCount: totalBandCount,
+    tieCount: totalTieCount,
+  };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
   const [activeTab, setActiveTab] = useState<ActiveBomTab>('terminal');
 
   // ── Coaming state
   const [coamingEntries, setCoamingEntries] = useState<CoamingEntry[]>(INITIAL_COAMING_DATA);
-  const [cableFillPct, setCableFillPct] = useState<number>(35);
+  const [cableFillPct, setCableFillPct] = useState<number>(20);
   // ── Tag state
   const [includeCoamingTag, setIncludeCoamingTag] = useState<boolean>(false);
 
@@ -526,6 +635,7 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
   const coamingRows = useMemo(() => calcCoamingRows(coamingEntries, cableFillPct), [coamingEntries, cableFillPct]);
   const tagRows = useMemo(() => buildTagBOM(cables, nodes, includeCoamingTag), [cables, nodes, includeCoamingTag]);
   const glandRows = useMemo(() => buildGlandBOM(cables, cableTypeDB), [cables, cableTypeDB]);
+  const bandTieData = useMemo(() => buildBandTieBOM(cables), [cables]);
 
   // KPIs
   const totalTerminals = useMemo(() => terminalRows.reduce((s, r) => s + r.quantity, 0), [terminalRows]);
@@ -620,6 +730,14 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
     );
   };
 
+  const handleExportBand = () => {
+    exportCSV(
+      'cable_band_tie_bom.csv',
+      ['타입', '구분', '수량(EA)'],
+      bandTieData.rows.map(r => [r.type, r.category, r.quantity])
+    );
+  };
+
   // ── Coaming helpers
   const updateCoamingEntry = (idx: number, field: keyof CoamingEntry, value: number) => {
     setCoamingEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
@@ -632,6 +750,7 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
     { key: 'coaming',     label: '코밍 BOM',   icon: <Building2 size={14} /> },
     { key: 'tag',         label: '네임태그 BOM', icon: <Tag size={14} /> },
     { key: 'gland',       label: '그랜드 BOM',   icon: <Circle size={14} /> },
+    { key: 'band',        label: '밴드/타이 BOM', icon: <Link2 size={14} /> },
   ];
 
   // ── Coaming KPIs
@@ -1028,7 +1147,7 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
             </div>
             <div className="flex items-center gap-1 text-xs text-amber-300 bg-amber-900/20 border border-amber-800/40 rounded px-2 py-1">
               <Info size={11} />
-              밀도 2.0 Kg/dm³ · 1세트 = 12.5 Kg (POWDER 7.5 + HARDNER 5.0) · MANGANA 0.84 Kg/EA
+              2.0Kg KVM COMPOUND (POWDER 60% + HARDNER 40%) · 기준부피 1,600,000mm³ · MANGANA 0.84 Kg/EA
             </div>
           </div>
 
@@ -1377,33 +1496,57 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {glandRows.map((row, idx) => (
-                    <tr key={`${row.equipment}-${row.glandType}-${idx}`}
-                        className={`${idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-850'} hover:bg-gray-700 transition-colors`}>
-                      <td className="px-3 py-2 border-b border-gray-800 text-gray-200 whitespace-nowrap text-xs font-bold">
-                        {row.equipment}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gray-800 font-mono text-blue-300 whitespace-nowrap font-bold">
-                        {row.glandType}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gray-800 text-right text-yellow-300 font-mono">
-                        {row.d}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gray-800 text-right text-gray-400 font-mono">
-                        {row.l}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gray-800 text-right text-gray-500 font-mono">
-                        {row.packId}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gray-800 text-right font-bold text-blue-300 text-base">
-                        {row.quantity.toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gray-800 text-gray-500 text-xs max-w-xs truncate">
-                        {row.cables.slice(0, 5).join(', ')}
-                        {row.cables.length > 5 && <span className="text-gray-600"> +{row.cables.length - 5}개</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    // Group gland rows by equipment
+                    const grouped = new Map<string, GlandEquipRow[]>();
+                    for (const row of glandRows) {
+                      if (!grouped.has(row.equipment)) grouped.set(row.equipment, []);
+                      grouped.get(row.equipment)!.push(row);
+                    }
+                    let rowIdx = 0;
+                    return Array.from(grouped.entries()).map(([equip, rows]) => (
+                      <React.Fragment key={equip}>
+                        {/* Equipment header row */}
+                        <tr className="bg-gray-800/70">
+                          <td colSpan={7} className="px-3 py-1.5 border-b border-gray-700 text-xs font-bold text-amber-300">
+                            {equip}
+                            <span className="text-gray-500 font-normal ml-2">({rows.reduce((s, r) => s + r.quantity, 0)} EA)</span>
+                          </td>
+                        </tr>
+                        {/* Sub-rows for each gland type */}
+                        {rows.map((row) => {
+                          const idx = rowIdx++;
+                          return (
+                            <tr key={`${row.equipment}-${row.glandType}-${idx}`}
+                                className={`${idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-850'} hover:bg-gray-700 transition-colors`}>
+                              <td className="px-3 py-1.5 border-b border-gray-800 text-gray-500 whitespace-nowrap text-xs pl-6">
+                                {/* indented, equipment shown in header */}
+                              </td>
+                              <td className="px-3 py-1.5 border-b border-gray-800 font-mono text-blue-300 whitespace-nowrap font-bold">
+                                {row.glandType}
+                              </td>
+                              <td className="px-3 py-1.5 border-b border-gray-800 text-right text-yellow-300 font-mono">
+                                {row.d}
+                              </td>
+                              <td className="px-3 py-1.5 border-b border-gray-800 text-right text-gray-400 font-mono">
+                                {row.l}
+                              </td>
+                              <td className="px-3 py-1.5 border-b border-gray-800 text-right text-gray-500 font-mono">
+                                {row.packId}
+                              </td>
+                              <td className="px-3 py-1.5 border-b border-gray-800 text-right font-bold text-blue-300 text-base">
+                                {row.quantity.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-1.5 border-b border-gray-800 text-gray-500 text-xs max-w-xs truncate">
+                                {row.cables.slice(0, 5).join(', ')}
+                                {row.cables.length > 5 && <span className="text-gray-600"> +{row.cables.length - 5}개</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ));
+                  })()}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-800 font-semibold text-white">
@@ -1435,6 +1578,93 @@ const BomAdvTab: React.FC<Props> = ({ cables, nodes, cableTypeDB = [] }) => {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── 밴드/타이 BOM ─────────────────────────────────────────────── */}
+      {activeTab === 'band' && (
+        <div className="flex flex-col gap-4">
+          {/* KPI */}
+          <div className="flex gap-3 flex-wrap">
+            <div className="bg-gray-800 rounded-lg px-5 py-3 flex flex-col items-center min-w-[140px]">
+              <span className="text-2xl font-bold text-blue-400">{bandTieData.totalLength.toLocaleString()}</span>
+              <span className="text-xs text-gray-400 mt-0.5">총 케이블 길이 (m)</span>
+            </div>
+            <div className="bg-gray-800 rounded-lg px-5 py-3 flex flex-col items-center min-w-[130px]">
+              <span className="text-2xl font-bold text-emerald-400">{bandTieData.bandCount.toLocaleString()}</span>
+              <span className="text-xs text-gray-400 mt-0.5">Cable Band (30%)</span>
+            </div>
+            <div className="bg-gray-800 rounded-lg px-5 py-3 flex flex-col items-center min-w-[130px]">
+              <span className="text-2xl font-bold text-orange-400">{bandTieData.tieCount.toLocaleString()}</span>
+              <span className="text-xs text-gray-400 mt-0.5">Cable Tie (70%)</span>
+            </div>
+          </div>
+
+          {/* Info */}
+          <div className="flex items-center gap-2 text-xs text-blue-300 bg-blue-900/20 border border-blue-800/40 rounded px-3 py-2">
+            <Info size={12} />
+            Cable Band = 총길이 x 30% (3종 균등배분) &nbsp;|&nbsp; Cable Tie = 총길이 x 70% (비율 배분)
+          </div>
+
+          {/* Export */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleExportBand}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 text-white rounded text-sm transition-colors"
+            >
+              <Download size={14} />
+              CSV 내보내기
+            </button>
+          </div>
+
+          {/* Table */}
+          {bandTieData.rows.length === 0 ? (
+            <div className="text-gray-500 text-sm text-center py-10">케이블 데이터가 없습니다.</div>
+          ) : (
+            <div className="overflow-auto rounded-lg border border-gray-700">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-800 text-gray-300 text-left">
+                    <th className="px-3 py-2 border-b border-gray-700 whitespace-nowrap">타입</th>
+                    <th className="px-3 py-2 border-b border-gray-700 whitespace-nowrap">구분</th>
+                    <th className="px-3 py-2 border-b border-gray-700 text-right font-bold text-blue-300 whitespace-nowrap">수량 (EA)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bandTieData.rows.map((row, idx) => (
+                    <tr key={`${row.type}-${row.category}-${idx}`}
+                        className={`${idx % 2 === 0 ? 'bg-gray-900' : 'bg-gray-850'} hover:bg-gray-700 transition-colors`}>
+                      <td className="px-3 py-2 border-b border-gray-800 text-gray-200 text-xs">
+                        {row.type}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 whitespace-nowrap">
+                        {row.category === 'Band' ? (
+                          <span className="px-2 py-0.5 rounded text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-700">Band</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-xs bg-orange-900/60 text-orange-300 border border-orange-700">Tie</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-800 text-right font-bold text-blue-300 text-base">
+                        {row.quantity.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-800 font-semibold text-white">
+                    <td className="px-3 py-2 border-t border-gray-600" colSpan={2}>합계</td>
+                    <td className="px-3 py-2 border-t border-gray-600 text-right text-blue-300 text-base font-bold">
+                      {bandTieData.rows.reduce((s, r) => s + r.quantity, 0).toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500">
+            * Cable Band: 총 케이블 길이의 30%를 3종 밴드 버클에 균등 배분. Cable Tie: 총 길이의 70%를 9종 타이에 비율 배분.
+          </p>
         </div>
       )}
     </div>

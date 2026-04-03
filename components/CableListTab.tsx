@@ -238,40 +238,62 @@ const CableListTab: React.FC<CableListTabProps> = ({
             </div>
           </div>
 
-          {/* 폼 그리드 (접힐 수 있음) */}
+          {/* 폼 + PATH 레이아웃 (좌 70%: 폼 컴팩트, 우 30%: DECK PATH) */}
           {panelExpanded && (
-            <div className="p-3 space-y-1.5">
-              {FORM_FIELDS.map((row, rowIdx) => (
-                <div key={rowIdx} className="grid grid-cols-3 gap-2">
-                  {row.map(field => (
-                    <div key={String(field.key)} className="flex flex-col gap-0.5">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-0.5">
-                        {field.label}
-                      </label>
-                      <input
-                        type={field.type || 'text'}
-                        className={inputCls}
-                        placeholder={field.placeholder || ''}
-                        value={String(editState[field.key] ?? '')}
-                        onChange={e => {
-                          const v = field.type === 'number'
-                            ? (parseFloat(e.target.value) || 0)
-                            : e.target.value;
-                          handleFieldChange(field.key, v as CableData[typeof field.key]);
-                        }}
-                      />
-                    </div>
-                  ))}
+            <div className="flex gap-2 p-2" style={{ maxHeight: '160px' }}>
+              {/* 좌: 컴팩트 폼 (70%) */}
+              <div className="flex-[7] overflow-y-auto space-y-1">
+                {FORM_FIELDS.map((row, rowIdx) => (
+                  <div key={rowIdx} className="grid grid-cols-3 gap-1">
+                    {row.map(field => (
+                      <div key={String(field.key)} className="flex items-center gap-1">
+                        <label className="text-[7px] font-black text-slate-500 uppercase w-14 shrink-0 text-right">
+                          {field.label}
+                        </label>
+                        <input
+                          type={field.type || 'text'}
+                          className="flex-1 px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-[10px] text-white focus:outline-none focus:border-blue-500"
+                          placeholder={field.placeholder || ''}
+                          value={String(editState[field.key] ?? '')}
+                          onChange={e => {
+                            const v = field.type === 'number'
+                              ? (parseFloat(e.target.value) || 0)
+                              : e.target.value;
+                            handleFieldChange(field.key, v as CableData[typeof field.key]);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              {/* 우: DECK별 PATH (30%) */}
+              <div className="flex-[3] bg-slate-900 border border-slate-700 rounded overflow-y-auto">
+                <div className="px-2 py-1 bg-slate-800 border-b border-slate-700 sticky top-0">
+                  <span className="text-[8px] font-black text-emerald-400 uppercase">PATH by DECK</span>
                 </div>
-              ))}
-
-              {/* PATH 전체 보기 (읽기 전용) */}
-              <div className="flex flex-col gap-0.5 mt-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-0.5">
-                  PATH (계산 결과, 읽기 전용)
-                </label>
-                <div className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-[11px] text-emerald-300 font-mono break-all min-h-[28px]">
-                  {selectedCable.calculatedPath || selectedCable.path || '(경로 없음)'}
+                <div className="px-2 py-1">
+                  {(() => {
+                    const pathStr = selectedCable.calculatedPath || selectedCable.path || '';
+                    if (!pathStr) return <span className="text-[9px] text-slate-600">(경로 없음)</span>;
+                    const pathNodes = pathStr.includes('→') ? pathStr.split('→').map((s: string) => s.trim()) : pathStr.split(',').map((s: string) => s.trim());
+                    // 데크 코드별 그룹핑 (노드 앞 2글자가 데크 코드)
+                    const deckGroups: Record<string, string[]> = {};
+                    pathNodes.forEach((n: string) => {
+                      const deck = n.replace(/[0-9]+[A-Z]?$/i, '').replace(/\d+$/, '') || n.substring(0, 2);
+                      if (!deckGroups[deck]) deckGroups[deck] = [];
+                      deckGroups[deck].push(n);
+                    });
+                    return Object.entries(deckGroups).map(([deck, nodes]) => (
+                      <div key={deck} className="mb-1">
+                        <span className="text-[8px] font-bold text-amber-400">{deck}</span>
+                        <span className="text-[8px] text-slate-500 ml-1">({nodes.length})</span>
+                        <div className="text-[8px] text-emerald-300 font-mono break-all leading-tight">
+                          {nodes.join(' → ')}
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>

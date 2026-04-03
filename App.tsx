@@ -782,9 +782,11 @@ interface MainAppProps {
   onBackToProjects: () => void;
   onLogout: () => void;
   userName?: string;
+  isAdmin?: boolean;
+  onGoAdmin?: () => void;
 }
 
-const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName }) => {
+const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName, isAdmin, onGoAdmin }) => {
   const { currentProject, projects, selectProject, updateCables, updateCablesAndNodes, clearCurrentProject } = useProject();
   const cables = currentProject?.cables ?? [];
   const nodes = currentProject?.nodes ?? [];
@@ -1415,6 +1417,18 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
             <span className="hidden sm:inline">프로젝트</span>
           </button>
 
+          {/* Admin (관리자만 표시) */}
+          {isAdmin && onGoAdmin && (
+            <button
+              onClick={onGoAdmin}
+              className="flex items-center gap-1 text-[10px] font-bold text-amber-400 hover:text-white bg-slate-800 hover:bg-amber-700 border border-amber-700/50 hover:border-amber-500 px-2 py-1 rounded transition-colors"
+              title="관리자 페이지"
+            >
+              <span>⚙️</span>
+              <span className="hidden sm:inline">Admin</span>
+            </button>
+          )}
+
           {/* Manual */}
           <button
             onClick={() => window.open('/manual.html', '_blank')}
@@ -1533,7 +1547,7 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName 
               <DeckQtyTab cables={cables} nodes={nodes} />
             )}
             {advancedTab === 'bottleneck' && (
-              <BottleneckAnalyzer cables={cables} nodes={nodes} />
+              <BottleneckAnalyzer cables={cables} nodes={nodes} onApplyRouting={(newCables) => updateCables(newCables, '병목 분석 라우팅 적용')} />
             )}
             {advancedTab === 'kave-router' && (
               <KaveRouter
@@ -1661,6 +1675,8 @@ const AppRouter: React.FC = () => {
       onBackToProjects={() => setScreen('projects')}
       onLogout={handleLogout}
       userName={user?.name}
+      isAdmin={user?.id === 'admin_user'}
+      onGoAdmin={() => setScreen('admin')}
     />
   );
 };

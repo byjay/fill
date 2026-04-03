@@ -486,16 +486,28 @@ const CableLine: React.FC<CableLineProps> = ({
   const segments: THREE.Vector3[][] = [];
   let current: THREE.Vector3[] = [];
 
-  for (const nodeName of pathNodes) {
-    const pos = positions[nodeName];
-    if (pos) {
-      current.push(pos.clone());
-    } else {
-      if (current.length >= 2) segments.push(current);
-      current = [];
+  if (pathNodes.length > 0) {
+    // calculatedPath 기반 렌더링
+    for (const nodeName of pathNodes) {
+      const pos = positions[nodeName];
+      if (pos) {
+        current.push(pos.clone());
+      } else {
+        if (current.length >= 2) segments.push(current);
+        current = [];
+      }
+    }
+    if (current.length >= 2) segments.push(current);
+  }
+
+  // Fallback: path가 없거나 세그먼트가 비었으면 fromNode → toNode 직선 연결
+  if (segments.length === 0) {
+    const fromPos = cable.fromNode ? positions[cable.fromNode] : null;
+    const toPos = cable.toNode ? positions[cable.toNode] : null;
+    if (fromPos && toPos) {
+      segments.push([fromPos.clone(), toPos.clone()]);
     }
   }
-  if (current.length >= 2) segments.push(current);
 
   if (segments.length === 0) return null;
 

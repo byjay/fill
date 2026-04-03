@@ -53,6 +53,8 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
   const [systemResult, setSystemResult] = useState<SystemResult | null>(null);
   const [recommendedResult, setRecommendedResult] = useState<SystemResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [calcStartTime, setCalcStartTime] = useState<number>(0);
+  const [calcElapsed, setCalcElapsed] = useState<number>(0);
 
   // ── 신규 state: Details 토글, TRAY TYPE 팝업 ──
   const [showDetails, setShowDetails] = useState(false);
@@ -100,7 +102,15 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
       return;
     }
     setIsCalculating(true);
+    const startTs = Date.now();
+    setCalcStartTime(startTs);
+    setCalcElapsed(0);
     const tiersToUse = overrideTiers ?? numberOfTiers;
+
+    // 경과 시간 업데이트 타이머
+    const timer = setInterval(() => {
+      setCalcElapsed(Date.now() - startTs);
+    }, 100);
 
     setTimeout(() => {
       const optimalSolution = solveSystem(activeCables, tiersToUse, maxHeightLimit, fillRatioLimit);
@@ -112,6 +122,8 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
         actualSolution = optimalSolution;
       }
       setSystemResult(actualSolution);
+      clearInterval(timer);
+      setCalcElapsed(Date.now() - startTs);
       setIsCalculating(false);
     }, 10);
   }, [activeCables, maxHeightLimit, fillRatioLimit, numberOfTiers]);
@@ -501,17 +513,42 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-600 gap-4 opacity-50 bg-slate-900">
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-600 gap-4 bg-slate-900">
             {isCalculating ? (
-              <>
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <p className="font-bold uppercase tracking-widest text-sm text-blue-400">Calculating...</p>
-              </>
+              <div className="flex flex-col items-center gap-5 max-w-md w-full px-8">
+                <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <p className="font-bold uppercase tracking-widest text-sm text-blue-400">Calculating Physics Simulation...</p>
+                <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden border border-slate-700">
+                  <div className="h-full bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 rounded-full animate-pulse" style={{width: '100%'}} />
+                </div>
+                <div className="flex justify-between w-full text-[10px] text-slate-500">
+                  <span>경과: {(calcElapsed / 1000).toFixed(1)}초</span>
+                  <span>{activeCables.length} 케이블 × {numberOfTiers}단 × 8폭</span>
+                  <span>예상: {Math.max(1, Math.ceil(activeCables.length / 50))}~{Math.max(2, Math.ceil(activeCables.length / 20))}초</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 w-full mt-2">
+                  <div className="bg-slate-800 rounded-lg p-3 text-center border border-slate-700">
+                    <div className="text-lg font-black text-blue-400">{activeCables.length}</div>
+                    <div className="text-[8px] text-slate-500 uppercase">Active Cables</div>
+                  </div>
+                  <div className="bg-slate-800 rounded-lg p-3 text-center border border-slate-700">
+                    <div className="text-lg font-black text-emerald-400">{numberOfTiers}</div>
+                    <div className="text-[8px] text-slate-500 uppercase">Tier Count</div>
+                  </div>
+                  <div className="bg-slate-800 rounded-lg p-3 text-center border border-slate-700">
+                    <div className="text-lg font-black text-amber-400">72</div>
+                    <div className="text-[8px] text-slate-500 uppercase">Matrix Cells</div>
+                  </div>
+                </div>
+              </div>
             ) : (
-              <>
+              <div className="flex flex-col items-center gap-4 opacity-50">
                 <Calculator size={64} />
                 <p className="font-bold uppercase tracking-widest text-sm">Awaiting Data Analysis</p>
-              </>
+                {calcElapsed > 0 && (
+                  <p className="text-[10px] text-slate-500">마지막 계산: {(calcElapsed / 1000).toFixed(1)}초 소요</p>
+                )}
+              </div>
             )}
           </div>
         )}

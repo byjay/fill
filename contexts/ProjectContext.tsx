@@ -37,18 +37,41 @@ export function ProjectProvider({ children, userId = 'anonymous' }: ProjectProvi
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // userId 바뀌면 해당 유저 프로젝트 로드
+  // localStorage 키 (userId별 분리)
+  const localStorageKey = `scms_local_projects_${userId}`;
+
+  // localStorage에서 로컬 프로젝트 로드
+  const loadLocalProjects = useCallback((): Project[] => {
+    try {
+      const raw = localStorage.getItem(localStorageKey);
+      if (!raw) return [];
+      return JSON.parse(raw) as Project[];
+    } catch { return []; }
+  }, [localStorageKey]);
+
+  // localStorage에 로컬 프로젝트 저장
+  const saveLocalProjects = useCallback((projs: Project[]) => {
+    try { localStorage.setItem(localStorageKey, JSON.stringify(projs)); } catch { /* ignore */ }
+  }, [localStorageKey]);
+
+  // userId 바뀌면 해당 유저 프로젝트 로드 (API 실패 시 localStorage fallback)
   useEffect(() => {
     setIsLoading(true);
     setCurrentProject(null);
     fetchProjects()
-      .then(all => setProjects(all))
+      .then(all => {
+        // API 프로젝트 + 로컬 프로젝트 병합 (중복 id 제거)
+        const local = loadLocalProjects();
+        const apiIds = new Set(all.map(p => p.id));
+        const merged = [...all, ...local.filter(p => !apiIds.has(p.id))];
+        setProjects(merged);
+      })
       .catch(err => {
-        console.warn('D1 fetch failed, using empty list:', err);
-        setProjects([]);
+        console.warn('D1 fetch failed, using localStorage fallback:', err);
+        setProjects(loadLocalProjects());
       })
       .finally(() => setIsLoading(false));
-  }, [userId]);
+  }, [userId, loadLocalProjects]);
 
   const loadProjects = useCallback(async () => {
     setIsLoading(true);
@@ -72,19 +95,51 @@ export function ProjectProvider({ children, userId = 'anonymous' }: ProjectProvi
   }, [projects]);
 
   const createProject = useCallback(async (name: string, vesselNo: string): Promise<Project> => {
-    const proj = await createProjectAPI(name, vesselNo);
-    setProjects(prev => [proj, ...prev]);
-    setCurrentProject(proj);
-    return proj;
-  }, []);
+    try {
+      const proj = await createProjectAPI(name, vesselNo);
+      setProjects(prev => [proj, ...prev]);
+      setCurrentProject(proj);
+      return proj;
+    } catch (apiErr) {
+      // API 실패 시 localStorage fallback (게스트 모드 포함)
+      console.warn('createProjectAPI failed, using localStorage fallback:', apiErr);
+      const localProj: Project = {
+        id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        name,
+        vesselNo,
+        userId,
+        cables: [],
+        nodes: [],
+        history: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setProjects(prev => {
+        const updated = [localProj, ...prev];
+        saveLocalProjects(updated);
+        return updated;
+      });
+      setCurrentProject(localProj);
+      return localProj;
+    }
+  }, [userId, saveLocalProjects]);
 
   const removeProject = useCallback(async (id: string) => {
-    await deleteProjectAPI(id);
-    setProjects(prev => prev.filter(p => p.id !== id));
+    // 로컬 프로젝트면 API 호출 없이 localStorage에서만 삭제
+    if (id.startsWith('local_')) {
+      setProjects(prev => {
+        const updated = prev.filter(p => p.id !== id);
+        saveLocalProjects(updated.filter(p => p.id.startsWith('local_')));
+        return updated;
+      });
+    } else {
+      try { await deleteProjectAPI(id); } catch (e) { console.warn('deleteProjectAPI failed:', e); }
+      setProjects(prev => prev.filter(p => p.id !== id));
+    }
     if (currentProject?.id === id) setCurrentProject(null);
-  }, [currentProject]);
+  }, [currentProject, saveLocalProjects]);
 
-  /** 내부 헬퍼: D1에 저장 + state 업데이트 */
+  /** 내부 헬퍼: D1에 저장 + state 업데이트 (로컬 프로젝트는 localStorage 사용) */
   const _persist = useCallback(async (
     proj: Project,
     cables: CableData[],
@@ -94,12 +149,32 @@ export function ProjectProvider({ children, userId = 'anonymous' }: ProjectProvi
   ): Promise<Project> => {
     const entry = makeHistoryEntry(action, description, cables, nodes);
     const history = [entry, ...proj.history].slice(0, 200);
-    const { updatedAt } = await updateProjectAPI(proj.id, cables, nodes, history);
+    const updatedAt = new Date().toISOString();
     const updated: Project = { ...proj, cables, nodes, history, updatedAt };
-    setCurrentProject(updated);
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+
+    if (proj.id.startsWith('local_')) {
+      // 로컬 프로젝트: localStorage에만 저장
+      setCurrentProject(updated);
+      setProjects(prev => {
+        const next = prev.map(p => p.id === updated.id ? updated : p);
+        saveLocalProjects(next.filter(p => p.id.startsWith('local_')));
+        return next;
+      });
+    } else {
+      try {
+        const res = await updateProjectAPI(proj.id, cables, nodes, history);
+        const syncedUpdated = { ...updated, updatedAt: res.updatedAt };
+        setCurrentProject(syncedUpdated);
+        setProjects(prev => prev.map(p => p.id === syncedUpdated.id ? syncedUpdated : p));
+        return syncedUpdated;
+      } catch (e) {
+        console.warn('updateProjectAPI failed, saving locally:', e);
+        setCurrentProject(updated);
+        setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      }
+    }
     return updated;
-  }, []);
+  }, [saveLocalProjects]);
 
   const updateCables = useCallback(async (cables: CableData[], description = '케이블 데이터 업데이트') => {
     if (!currentProject) return;

@@ -142,14 +142,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0f1829] overflow-hidden">
     <div className="h-full w-full max-w-[430px] flex flex-col bg-[#0f1829] overflow-hidden mx-auto border-x border-slate-800/50" style={{ animation: 'fadeInUp 0.3s ease' }}>
 
-      {/* 상단: 로고 */}
-      <div className="shrink-0 flex items-center justify-center gap-3 px-6 pt-8 pb-5">
-        <div className="flex-1 flex items-center justify-center py-3 px-3 rounded-2xl bg-white/5 border border-white/8">
-          <img src="/logo.jpg" alt="SEASTAR" className="h-12 object-contain" />
-        </div>
-        <div className="flex-1 flex items-center justify-center py-3 px-3 rounded-2xl bg-white/5 border border-white/8">
-          <img src="/scms_logo.png" alt="SCM" className="h-12 object-contain" />
-        </div>
+      {/* 상단: 로고 (이미지만, 배경박스 없이) */}
+      <div className="shrink-0 flex items-center justify-center gap-4 px-6 pt-8 pb-4">
+        <img src="/logo.jpg" alt="SEASTAR" className="h-14 object-contain" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+        <img src="/scms_logo.png" alt="SCM" className="h-14 object-contain" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
       </div>
 
       {/* 로그인 버튼 영역 */}
@@ -221,16 +217,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         </button>
       </div>
 
-      {/* 하단: 동영상 — 나머지 공간 전부 채움 */}
-      <div className="flex-1 relative overflow-hidden mt-2">
+      {/* 하단: 동영상 — 비율 유지하며 전체 채움 */}
+      <div className="flex-1 relative overflow-hidden mt-2 min-h-0">
         <video autoPlay loop muted playsInline
-          className="w-full h-full object-cover opacity-70">
+          className="absolute inset-0 w-full h-full object-cover opacity-80">
           <source src="/scms.mp4" type="video/mp4" />
         </video>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0f1829] via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0f1829] via-[#0f182930] to-transparent" />
         <div className="absolute inset-x-0 bottom-4 flex flex-col items-center gap-1 pointer-events-none">
-          <span className="text-[9px] font-black text-white/40 tracking-[0.35em] uppercase">Securing Network Integrity</span>
-          <div className="w-8 h-0.5 bg-blue-400/50" />
+          <span className="text-[10px] font-black text-white/50 tracking-[0.35em] uppercase">Securing Network Integrity</span>
+          <div className="w-8 h-0.5 bg-blue-400/60" />
         </div>
       </div>
 

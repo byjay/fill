@@ -93,7 +93,7 @@ function computeCoordScale(nodes: NodeData[]): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Auto-layout: force-directed using relation field, with deck-based Y separation
+// Auto-layout: ship-like linear grid grouped by deck/structure, with light spring adjustment
 // ─────────────────────────────────────────────────────────────────────────────
 function buildPositions(
   nodeData: NodeData[],
@@ -128,6 +128,7 @@ function buildPositions(
     }
   }
 
+  // ── Build adjacency from relation field ──
   const adjacency: Record<string, string[]> = {};
   nodeData.forEach((node) => {
     const neighbors = node.relation
@@ -139,6 +140,7 @@ function buildPositions(
     adjacency[node.name] = neighbors;
   });
 
+  // ── Group by deck → structure for ship-like linear layout ──
   const deckMap: Record<string, NodeData[]> = {};
   nodeData.forEach((node) => {
     const deck = node.deck ?? 'default';
@@ -151,56 +153,54 @@ function buildPositions(
     deckYMap[deck] = i * 14;
   });
 
-  nodeData.forEach((node) => {
-    const deck = node.deck ?? 'default';
+  // ── Initial placement: linear grid grouped by structure (ship-like) ──
+  decks.forEach((deck) => {
     const deckNodes = deckMap[deck];
-    const idx = deckNodes.indexOf(node);
-    const count = deckNodes.length;
-    const radius = Math.max(15, count * 1.8);
-    const angle = (idx / count) * Math.PI * 2;
     const y = deckYMap[deck] ?? 0;
-    positions[node.name] = new THREE.Vector3(
-      Math.cos(angle) * radius,
-      y,
-      Math.sin(angle) * radius,
-    );
+
+    // Sub-group by structure within each deck
+    const structMap: Record<string, NodeData[]> = {};
+    deckNodes.forEach((node) => {
+      const struct = node.structure ?? '_none';
+      if (!structMap[struct]) structMap[struct] = [];
+      structMap[struct].push(node);
+    });
+    const structs = Object.keys(structMap).sort();
+
+    structs.forEach((struct, sIdx) => {
+      const nodes = structMap[struct];
+      const zOffset = sIdx * 12; // structures spread along Z (fore/aft)
+
+      // Arrange nodes in a rectangular grid within each structure
+      const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+      nodes.forEach((node, nIdx) => {
+        const row = Math.floor(nIdx / cols);
+        const col = nIdx % cols;
+        positions[node.name] = new THREE.Vector3(
+          col * 5,        // X: across beam (port/starboard)
+          y,              // Y: deck height
+          zOffset + row * 5, // Z: fore/aft within structure group
+        );
+      });
+    });
   });
 
-  const ITERATIONS = 80;
-  const IDEAL_LENGTH = 8;
-  const REPULSION = 200;
-  const ATTRACTION = 0.05;
-  const MAX_DISP = 3;
+  // ── Light spring adjustment (50 iterations) — pull connected nodes closer ──
+  // without collapsing into circles
+  const SPRING_ITERATIONS = 50;
+  const SPRING_ATTRACTION = 0.02;
+  const REPEL_DIST = 8;
+  const MAX_DISP = 1.5;
 
   const nodeNames = nodeData.map((n) => n.name);
 
-  for (let iter = 0; iter < ITERATIONS; iter++) {
+  for (let iter = 0; iter < SPRING_ITERATIONS; iter++) {
     const disp: Record<string, { dx: number; dz: number }> = {};
     nodeNames.forEach((name) => {
       disp[name] = { dx: 0, dz: 0 };
     });
 
-    for (let i = 0; i < nodeNames.length; i++) {
-      for (let j = i + 1; j < nodeNames.length; j++) {
-        const a = nodeNames[i];
-        const b = nodeNames[j];
-        const pa = positions[a];
-        const pb = positions[b];
-        if (!pa || !pb) continue;
-
-        const dx = pa.x - pb.x;
-        const dz = pa.z - pb.z;
-        const distSq = dx * dx + dz * dz + 0.01;
-        const dist = Math.sqrt(distSq);
-        const force = REPULSION / distSq;
-
-        disp[a].dx += (dx / dist) * force;
-        disp[a].dz += (dz / dist) * force;
-        disp[b].dx -= (dx / dist) * force;
-        disp[b].dz -= (dz / dist) * force;
-      }
-    }
-
+    // Attraction: pull connected nodes slightly closer
     nodeNames.forEach((name) => {
       const neighbors = adjacency[name] ?? [];
       const pa = positions[name];
@@ -211,12 +211,36 @@ function buildPositions(
         const dx = pb.x - pa.x;
         const dz = pb.z - pa.z;
         const dist = Math.sqrt(dx * dx + dz * dz + 0.01);
-        const force = ATTRACTION * (dist - IDEAL_LENGTH);
-        disp[name].dx += (dx / dist) * force;
-        disp[name].dz += (dz / dist) * force;
+        disp[name].dx += dx * SPRING_ATTRACTION;
+        disp[name].dz += dz * SPRING_ATTRACTION;
       });
     });
 
+    // Repulsion: push apart only if nodes are too close (< REPEL_DIST)
+    for (let i = 0; i < nodeNames.length; i++) {
+      for (let j = i + 1; j < nodeNames.length; j++) {
+        const a = nodeNames[i];
+        const b = nodeNames[j];
+        const pa = positions[a];
+        const pb = positions[b];
+        if (!pa || !pb) continue;
+
+        const dx = pa.x - pb.x;
+        const dz = pa.z - pb.z;
+        const dist = Math.sqrt(dx * dx + dz * dz + 0.01);
+        if (dist < REPEL_DIST) {
+          const push = (REPEL_DIST - dist) * 0.1;
+          const nx = dx / dist;
+          const nz = dz / dist;
+          disp[a].dx += nx * push;
+          disp[a].dz += nz * push;
+          disp[b].dx -= nx * push;
+          disp[b].dz -= nz * push;
+        }
+      }
+    }
+
+    // Apply displacement with clamp
     nodeNames.forEach((name) => {
       const pos = positions[name];
       if (!pos) return;
@@ -413,7 +437,13 @@ const NodeSphere: React.FC<NodeSphereProps> = ({
           document.body.style.cursor = 'default';
         }}
       >
-        <sphereGeometry args={[size, 16, 16]} />
+        {/* Box for equipment/panel; sphere for junction/penetration/others */}
+        {(() => {
+          const t = (nodePos.node.type ?? '').toLowerCase();
+          return t === 'equipment' || t === 'panel'
+            ? <boxGeometry args={[size * 1.6, size * 1.6, size * 1.6]} />
+            : <sphereGeometry args={[size, 16, 16]} />;
+        })()}
         <meshStandardMaterial
           ref={matRef}
           color={isFirePath ? '#ff4444' : color}

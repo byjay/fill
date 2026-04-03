@@ -141,3 +141,102 @@ export interface TrayFillNodeResult {
 }
 
 export type TrayFillSummary = Record<string, TrayFillNodeResult>;
+
+// ─── Admin 관련 타입 ────────────────────────────────────────────────────────
+
+export interface UserPermissions {
+  dashboard: boolean;
+  cables: boolean;
+  nodes: boolean;
+  bom: boolean;
+  routing: boolean;
+  trayfill: boolean;
+  view3d: boolean;
+  analysis: boolean;
+  history: boolean;
+  project: boolean;
+  cabletype: boolean;
+  // 고급 메뉴
+  interference: boolean;
+  voltagedrop: boolean;
+  classrule: boolean;
+  bomAdv: boolean;
+  drum: boolean;
+  deckQty: boolean;
+  bottleneck: boolean;
+  kaveRouter: boolean;
+  // 특별 권한
+  canEdit: boolean;
+  canExport: boolean;
+  canDelete: boolean;
+}
+
+export const DEFAULT_PERMISSIONS: UserPermissions = {
+  dashboard: true,
+  cables: true,
+  nodes: true,
+  bom: true,
+  routing: true,
+  trayfill: true,
+  view3d: true,
+  analysis: true,
+  history: true,
+  project: true,
+  cabletype: true,
+  interference: false,
+  voltagedrop: false,
+  classrule: false,
+  bomAdv: false,
+  drum: false,
+  deckQty: false,
+  bottleneck: false,
+  kaveRouter: false,
+  canEdit: true,
+  canExport: true,
+  canDelete: false,
+};
+
+export const MENU_PERMISSIONS: Record<string, keyof UserPermissions> = {
+  dashboard: 'dashboard',
+  cables: 'cables',
+  nodes: 'nodes',
+  bom: 'bom',
+  routing: 'routing',
+  trayfill: 'trayfill',
+  '3d': 'view3d',
+  analysis: 'analysis',
+  history: 'history',
+  project: 'project',
+  cabletype: 'cabletype',
+  interference: 'interference',
+  voltagedrop: 'voltagedrop',
+  classrule: 'classrule',
+  'bom-adv': 'bomAdv',
+  drum: 'drum',
+  'deck-qty': 'deckQty',
+  bottleneck: 'bottleneck',
+  'kave-router': 'kaveRouter',
+};
+
+export interface AdminUser {
+  user_id: string;
+  name: string;
+  email: string;
+  provider: string;
+  status: 'active' | 'suspended';
+  permissions: Partial<UserPermissions>;
+  created_at: string;
+  last_login?: string;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  company: string;
+  phone: string;
+  provider: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+}

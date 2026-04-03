@@ -36,42 +36,34 @@ interface FieldDef {
   placeholder?: string;
 }
 
+// 3줄 × 6열 레이아웃으로 압축 (18 fields → 3 rows)
 const FORM_FIELDS: FieldDef[][] = [
-  // Row 1
+  // Row 1 (6열)
   [
     { key: 'name', label: 'CABLE NAME' },
     { key: 'type', label: 'CABLE TYPE' },
     { key: 'system', label: 'SYSTEM' },
-  ],
-  // Row 2
-  [
     { key: 'wdPage', label: 'WD PAGE' },
     { key: 'od', label: 'OD (mm)', type: 'number' },
-    { key: 'checkNode', label: 'CHECK / VIA', placeholder: 'comma separated' },
+    { key: 'checkNode', label: 'CHECK/VIA', placeholder: 'comma separated' },
   ],
-  // Row 3
+  // Row 2 (6열) — FROM 정보
   [
     { key: 'fromNode', label: 'FROM NODE' },
     { key: 'fromRoom', label: 'FROM ROOM' },
     { key: 'fromEquip', label: 'FROM EQUIP' },
+    { key: 'fromRest', label: 'F.REST (m)', type: 'number' },
+    { key: 'supplyDeck', label: 'SUPPLY DECK' },
+    { key: 'revision', label: 'REVISION' },
   ],
-  // Row 4
+  // Row 3 (6열) — TO 정보
   [
-    { key: 'fromRest', label: 'FROM REST (m)', type: 'number' },
     { key: 'toNode', label: 'TO NODE' },
     { key: 'toRoom', label: 'TO ROOM' },
-  ],
-  // Row 5
-  [
     { key: 'toEquip', label: 'TO EQUIP' },
-    { key: 'toRest', label: 'TO REST (m)', type: 'number' },
-    { key: 'supplyDeck', label: 'SUPPLY DECK' },
-  ],
-  // Row 6
-  [
+    { key: 'toRest', label: 'T.REST (m)', type: 'number' },
     { key: 'porWeight', label: 'POR WEIGHT', type: 'number' },
     { key: 'remark', label: 'REMARK' },
-    { key: 'revision', label: 'REVISION' },
   ],
 ];
 
@@ -244,7 +236,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
               {/* 좌: 컴팩트 폼 (70%) */}
               <div className="flex-[7] overflow-y-auto space-y-1">
                 {FORM_FIELDS.map((row, rowIdx) => (
-                  <div key={rowIdx} className="grid grid-cols-3 gap-1">
+                  <div key={rowIdx} className="grid grid-cols-6 gap-1">
                     {row.map(field => (
                       <div key={String(field.key)} className="flex items-center gap-1">
                         <label className="text-[7px] font-black text-slate-500 uppercase w-14 shrink-0 text-right">
@@ -305,17 +297,17 @@ const CableListTab: React.FC<CableListTabProps> = ({
       <div className="flex-1 overflow-auto">
         <table
           className="text-left border-collapse"
-          style={{ fontSize: '11px', tableLayout: 'fixed', width: `${widths.reduce((a, b) => a + b, 0)}px`, minWidth: '100%' }}
+          style={{ fontSize: '12px', tableLayout: 'fixed', width: `${widths.reduce((a, b) => a + b, 0)}px`, minWidth: '100%' }}
         >
           <colgroup>
             {widths.map((w, i) => <col key={i} style={{ width: w }} />)}
           </colgroup>
-          <thead className="bg-slate-950 text-slate-400 uppercase sticky top-0 z-10" style={{ fontSize: '10px' }}>
+          <thead className="bg-slate-950 text-slate-300 uppercase sticky top-0 z-10" style={{ fontSize: '11px' }}>
             <tr>
               {COL_HEADERS.map((label, i) => (
                 <th
                   key={i}
-                  className="relative px-2 py-2 font-bold border-b-2 border-slate-700 overflow-hidden select-none whitespace-nowrap"
+                  className="relative px-2 py-2 font-bold border border-slate-600 overflow-hidden select-none whitespace-nowrap"
                 >
                   <span className="truncate block pr-1">{label}</span>
                   <ResizeHandle onMouseDown={(e) => startResize(i, e)} />
@@ -323,7 +315,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/50">
+          <tbody className="divide-y divide-slate-700">
             {filteredCables.map(({ cable, originalIndex }) => {
               const isSelected = selectedIndex === originalIndex;
               const rowCls = isSelected

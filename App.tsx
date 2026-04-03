@@ -27,6 +27,7 @@ import DrumManagerPanel from './components/DrumManagerPanel';
 import DeckQtyTab from './components/DeckQtyTab';
 import BottleneckAnalyzer from './components/BottleneckAnalyzer';
 import KaveRouter from './components/KaveRouter';
+import AdminPanel from './components/AdminPanel';
 import {
   LayoutDashboard,
   List,
@@ -56,7 +57,7 @@ import {
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type AppScreen = 'login' | 'projects' | 'main';
+type AppScreen = 'login' | 'projects' | 'main' | 'admin';
 type TabType = 'dashboard' | 'cables' | 'nodes' | 'bom' | 'routing' | 'trayfill' | '3d' | 'analysis' | 'history' | 'project' | 'cabletype';
 type AdvancedTab = 'interference' | 'voltagedrop' | 'classrule' | 'bom-adv' | 'drum' | 'deck-qty' | 'bottleneck' | 'kave-router' | null;
 
@@ -704,16 +705,16 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   const btn = (onClick: () => void, label: string, icon: React.ReactNode, cls = '') =>
-    <button onClick={onClick} className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap transition-colors ${cls}`}>{icon}<span>{label}</span></button>;
+    <button onClick={onClick} className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-bold whitespace-nowrap transition-colors ${cls}`}>{icon}<span>{label}</span></button>;
 
   return (
-    <div className="bg-slate-900 border-b border-slate-700 flex items-center px-2 shrink-0 gap-0.5 overflow-x-auto" style={{ height: 36 }}>
+    <div className="bg-slate-900 border-b border-slate-700 flex items-center px-2 shrink-0 gap-0.5 overflow-x-auto" style={{ height: 44 }}>
       {/* ── 탭 ── */}
       {TABS.map(tab => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold whitespace-nowrap transition-colors ${
             activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
@@ -1377,30 +1378,30 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName,
           <button
             onClick={handleUndo}
             disabled={undoStack.length === 0}
-            className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="실행 취소 (Ctrl+Z)"
           >
-            <Undo2 size={11} />
+            <Undo2 size={12} />
             <span className="hidden sm:inline">Undo ({undoStack.length})</span>
           </button>
           {/* Redo button */}
           <button
             onClick={handleRedo}
             disabled={redoStack.length === 0}
-            className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="다시 실행 (Ctrl+Y)"
           >
-            <Redo2 size={11} />
+            <Redo2 size={12} />
             <span className="hidden sm:inline">Redo ({redoStack.length})</span>
           </button>
 
           <div className="h-4 w-px bg-slate-700 mx-0.5 shrink-0" />
 
           {/* Stats */}
-          <div className="flex items-center gap-2 text-[10px] text-slate-500">
+          <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="text-blue-400 font-bold">{cables.length}</span>
             <span>cables</span>
-            <span className="text-slate-700">|</span>
+            <span className="text-slate-600">|</span>
             <span className="text-blue-400 font-bold">{nodes.length}</span>
             <span>nodes</span>
           </div>
@@ -1410,10 +1411,10 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName,
           {/* Back to projects */}
           <button
             onClick={() => { clearCurrentProject(); onBackToProjects(); }}
-            className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded transition-colors"
             title="프로젝트 목록으로"
           >
-            <ArrowLeft size={11} />
+            <ArrowLeft size={12} />
             <span className="hidden sm:inline">프로젝트</span>
           </button>
 
@@ -1421,32 +1422,32 @@ const MainApp: React.FC<MainAppProps> = ({ onBackToProjects, onLogout, userName,
           {isAdmin && onGoAdmin && (
             <button
               onClick={onGoAdmin}
-              className="flex items-center gap-1 text-[10px] font-bold text-amber-400 hover:text-white bg-slate-800 hover:bg-amber-700 border border-amber-700/50 hover:border-amber-500 px-2 py-1 rounded transition-colors"
+              className="flex items-center gap-1 text-xs font-bold text-amber-400 hover:text-white bg-slate-800 hover:bg-amber-700 border border-amber-700/50 hover:border-amber-500 px-2.5 py-1.5 rounded transition-colors"
               title="관리자 페이지"
             >
               <span>⚙️</span>
-              <span className="hidden sm:inline">Admin</span>
+              <span>Admin</span>
             </button>
           )}
 
           {/* Manual */}
           <button
             onClick={() => window.open('/manual.html', '_blank')}
-            className="flex items-center gap-1 text-[10px] font-bold text-cyan-400 hover:text-white bg-slate-800 hover:bg-cyan-700 border border-slate-700 hover:border-cyan-500 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-1 text-xs font-bold text-cyan-400 hover:text-white bg-slate-800 hover:bg-cyan-700 border border-slate-700 hover:border-cyan-500 px-2.5 py-1.5 rounded transition-colors"
             title="매뉴얼"
           >
             <span>📖</span>
-            <span className="hidden sm:inline">Manual</span>
+            <span>Manual</span>
           </button>
 
           {/* Logout */}
           <button
             onClick={onLogout}
-            className="flex items-center gap-1 text-[10px] font-bold text-red-400 hover:text-white bg-slate-800 hover:bg-red-700 border border-slate-700 hover:border-red-600 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-1 text-xs font-bold text-red-400 hover:text-white bg-slate-800 hover:bg-red-700 border border-slate-700 hover:border-red-600 px-2.5 py-1.5 rounded transition-colors"
             title="로그아웃"
           >
-            <LogOut size={11} />
-            <span className="hidden sm:inline">로그아웃</span>
+            <LogOut size={12} />
+            <span>로그아웃</span>
           </button>
         </div>
       </header>
@@ -1601,7 +1602,11 @@ const AppRouter: React.FC = () => {
   // 세션 복원: 이미 로그인했으면 'projects' 화면으로 바로 이동
   const savedSession = loadSession();
   const [user, setUser] = useState<UserInfo | null>(savedSession);
-  const [screen, setScreen] = useState<AppScreen>(savedSession ? 'projects' : 'login');
+  // 관리자 세션 복원: admin_user → admin 화면으로 바로 이동
+  const initialScreen: AppScreen = savedSession
+    ? (savedSession.id === 'admin_user' ? 'admin' : 'projects')
+    : 'login';
+  const [screen, setScreen] = useState<AppScreen>(initialScreen);
 
   const { currentProject, clearCurrentProject } = useProject();
   const currentProjectId = currentProject?.id ?? null;
@@ -1668,6 +1673,16 @@ const AppRouter: React.FC = () => {
 
   if (screen === 'projects') {
     return <ProjectSelectionScreen userName={user?.name} onLogout={handleLogout} />;
+  }
+
+  if (screen === 'admin') {
+    return (
+      <AdminPanel
+        userName={user?.name}
+        onLogout={handleLogout}
+        onGoToProjects={() => setScreen('projects')}
+      />
+    );
   }
 
   return (

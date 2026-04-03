@@ -1,0 +1,18 @@
+
+ ⛅️ wrangler 4.80.0
+───────────────────
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mWarning: Your working directory is a git repo and has uncommitted changes[0m
+
+  To silence this warning, pass in --commit-dirty=true
+
+
+✨ Compiled Worker successfully
+Uploading... (4/10)
+Uploading... (6/10)
+Uploading... (8/10)
+Uploading... (10/10)
+✨ Success! Uploaded 6 files (4 already uploaded) (3.93 sec)
+
+✨ Uploading Functions bundle
+🌎 Deploying...
+✨ Deployment complete! Take a peek over at https://6cf23f61.fill-1sg.pages.dev

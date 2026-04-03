@@ -4,7 +4,7 @@
  */
 
 import { getAuthToken } from './firebase';
-import type { Project, CableData, NodeData, HistoryEntry, TrayFillSummary } from '../types';
+import type { Project, CableData, NodeData, HistoryEntry, TrayFillSummary, AdminUser, ApprovalRequest, UserPermissions } from '../types';
 
 const BASE = '/api';
 
@@ -88,6 +88,60 @@ export async function calculateTrayFillAPI(projectId: string): Promise<{
   });
   if (!res.ok) throw new Error(`trayFill failed: ${res.status}`);
   return res.json();
+}
+
+// ── 관리자 API ──────────────────────────────────────────────────
+
+export async function fetchAdminUsersAPI(): Promise<AdminUser[]> {
+  try {
+    const res = await fetch(`${BASE}/admin/users`, { headers: await authHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function updateUserPermissionsAPI(
+  userId: string,
+  permissions: Partial<UserPermissions>,
+  status?: 'active' | 'suspended',
+): Promise<void> {
+  try {
+    await fetch(`${BASE}/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers: await authHeaders(),
+      body: JSON.stringify({ permissions, status }),
+    });
+  } catch { /* ignore */ }
+}
+
+export async function deleteUserAPI(userId: string): Promise<void> {
+  try {
+    await fetch(`${BASE}/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      headers: await authHeaders(),
+    });
+  } catch { /* ignore */ }
+}
+
+export async function fetchApprovalsAPI(): Promise<ApprovalRequest[]> {
+  try {
+    const res = await fetch(`${BASE}/admin/approvals`, { headers: await authHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function processApprovalAPI(
+  requestId: string,
+  action: 'approve' | 'reject',
+): Promise<void> {
+  try {
+    await fetch(`${BASE}/admin/approvals/${encodeURIComponent(requestId)}`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ action }),
+    });
+  } catch { /* ignore */ }
 }
 
 // ── 히스토리 엔트리 생성 헬퍼 ──────────────────────────────────

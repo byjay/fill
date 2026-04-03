@@ -136,12 +136,43 @@ export async function processApprovalAPI(
   action: 'approve' | 'reject',
 ): Promise<void> {
   try {
+    // 백엔드: PUT method + { status: 'approved'|'rejected' } 형태 필요
+    const status = action === 'approve' ? 'approved' : 'rejected';
     await fetch(`${BASE}/admin/approvals/${encodeURIComponent(requestId)}`, {
-      method: 'POST',
+      method: 'PUT',   // POST → PUT (백엔드 요구사항)
       headers: await authHeaders(),
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ status }),  // { action } → { status }
     });
   } catch { /* ignore */ }
+}
+
+// ── 승인 요청 제출 (pendingUser.uid 직접 전달 → 'anonymous' 충돌 방지) ────────
+export async function submitApprovalRequestAPI(data: {
+  name: string;
+  email: string;
+  company: string;
+  phone: string;
+  provider?: string;
+}, overrideUserId?: string): Promise<{ success?: boolean; id?: string; already?: string; error?: string }> {
+  try {
+    // overrideUserId가 있으면 (미승인 사용자의 Firebase UID) 그것을 사용
+    // 없으면 localStorage 세션에서 읽음 (로그인된 사용자)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': overrideUserId
+        ? `Bearer ${overrideUserId}`
+        : ((await authHeaders())['Authorization'] || 'Bearer anonymous'),
+    };
+    const res = await fetch(`${BASE}/admin/approvals`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    return res.json();
+  } catch (e) {
+    return { error: String(e) };
+  }
 }
 
 // ── 히스토리 엔트리 생성 헬퍼 ──────────────────────────────────

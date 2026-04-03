@@ -637,6 +637,19 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   const bothFileRef = useRef<HTMLInputElement>(null);
   const jsonLoadRef = useRef<HTMLInputElement>(null);
 
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [uploadsOpen, setUploadsOpen] = useState(false);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handler = (_e: MouseEvent) => {
+      setDownloadsOpen(false);
+      setUploadsOpen(false);
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
+
   // Cable Type 마스터에서 OD 자동 매핑 (type 컬럼이 cableTypeData의 cableType과 일치하면 OD 교체)
   const applyCableTypeOD = useCallback((parsed: CableData[]): CableData[] => {
     if (cableTypeData.length === 0) return parsed;
@@ -704,17 +717,14 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
     e.target.value = '';
   };
 
-  const btn = (onClick: () => void, label: string, icon: React.ReactNode, cls = '') =>
-    <button onClick={onClick} className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-bold whitespace-nowrap transition-colors ${cls}`}>{icon}<span>{label}</span></button>;
-
   return (
-    <div className="bg-slate-900 border-b border-slate-700 flex items-center px-2 shrink-0 gap-0.5 overflow-x-auto" style={{ height: 44 }}>
+    <div className="bg-slate-900 border-b border-slate-700 flex items-center px-2 shrink-0 gap-0.5 flex-nowrap overflow-hidden" style={{ height: 44 }}>
       {/* ── 탭 ── */}
       {TABS.map(tab => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1 px-2 py-1.5 rounded text-[11px] font-bold whitespace-nowrap transition-colors shrink-0 ${
             activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
           }`}
         >
@@ -722,53 +732,91 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
         </button>
       ))}
 
-      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+      <div className="h-4 w-px bg-slate-700 mx-1 shrink-0" />
 
       {/* ── 고급 메뉴 ── */}
       <AdvancedMenuDropdown onSelect={onAdvancedSelect} activeTab={advancedTab as AdvMenuTab | null} />
 
-      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+      <div className="h-4 w-px bg-slate-700 mx-1 shrink-0" />
 
-      {/* ── 파일 업로드 ── */}
-      {btn(() => cableFileRef.current?.click(),
-        cables.length > 0 ? `케이블 ${cables.length}` : '케이블↑',
-        <Upload size={10} className="text-blue-400" />,
-        'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300'
-      )}
-      {btn(() => nodeFileRef.current?.click(),
-        nodes.length > 0 ? `노드 ${nodes.length}` : '노드↑',
-        <Network size={10} className="text-purple-400" />,
-        'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300'
-      )}
-      {btn(() => bothFileRef.current?.click(), '통합↑', <Upload size={10} />,
-        'bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/30 text-blue-300'
-      )}
+      {/* ── 업로드 드롭다운 ── */}
+      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={() => { setUploadsOpen(v => !v); setDownloadsOpen(false); }}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-bold whitespace-nowrap bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 transition-colors"
+        >
+          <Upload size={11} className="text-blue-400" />
+          <span>파일 업로드</span>
+          <ChevronDown size={11} className={`transition-transform ${uploadsOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {uploadsOpen && (
+          <div className="absolute left-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl py-1 z-50 min-w-[160px]">
+            <div className="px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-700 mb-1">업로드</div>
+            <button onClick={() => { cableFileRef.current?.click(); setUploadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <Upload size={11} className="text-blue-400" /> 케이블 파일 (.xlsx)
+              {cables.length > 0 && <span className="ml-auto text-[9px] text-blue-400">{cables.length}건</span>}
+            </button>
+            <button onClick={() => { nodeFileRef.current?.click(); setUploadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <Network size={11} className="text-purple-400" /> 노드 파일 (.xlsx)
+              {nodes.length > 0 && <span className="ml-auto text-[9px] text-purple-400">{nodes.length}건</span>}
+            </button>
+            <button onClick={() => { bothFileRef.current?.click(); setUploadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <Upload size={11} className="text-cyan-400" /> 통합 파일 (멀티시트)
+            </button>
+            <div className="border-t border-slate-700 mt-1 pt-1">
+              <button onClick={() => { jsonLoadRef.current?.click(); setUploadsOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-yellow-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+                <FolderOpen size={11} /> JSON 불러오기
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
-      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
+      {/* ── 전체 경로 계산 ── */}
+      <button
+        onClick={onCalculateAllPaths}
+        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-bold whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white transition-colors shrink-0"
+      >
+        <Activity size={11} />
+        <span>전체경로계산</span>
+      </button>
 
-      {/* ── JSON ── */}
-      {btn(onJsonSave, 'JSON↓', <Download size={10} />,
-        'bg-yellow-900/30 hover:bg-yellow-900/50 border border-yellow-700/30 text-yellow-300'
-      )}
-      {btn(() => jsonLoadRef.current?.click(), 'JSON↑', <FolderOpen size={10} />,
-        'bg-yellow-900/30 hover:bg-yellow-900/50 border border-yellow-700/30 text-yellow-300'
-      )}
-
-      <div className="h-4 w-px bg-slate-700 mx-1.5 shrink-0" />
-
-      {/* ── 액션 ── */}
-      {btn(onCalculateAllPaths, '전체 경로 계산', <Activity size={10} />,
-        'bg-blue-600 hover:bg-blue-700 text-white'
-      )}
-      {btn(onExportCableList, '케이블↓', <Download size={10} />,
-        'bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300'
-      )}
-      {btn(onExportNodeInfo, '노드↓', <Download size={10} />,
-        'bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300'
-      )}
-      {btn(onExportAllData, 'JSON 전체↓', <Download size={10} />,
-        'bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300'
-      )}
+      {/* ── 다운로드 드롭다운 ── */}
+      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={() => { setDownloadsOpen(v => !v); setUploadsOpen(false); }}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-bold whitespace-nowrap bg-emerald-800/60 hover:bg-emerald-700 border border-emerald-700/40 text-emerald-300 transition-colors"
+        >
+          <Download size={11} />
+          <span>내보내기</span>
+          <ChevronDown size={11} className={`transition-transform ${downloadsOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {downloadsOpen && (
+          <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl py-1 z-50 min-w-[160px]">
+            <div className="px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-700 mb-1">내보내기</div>
+            <button onClick={() => { onExportCableList(); setDownloadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <Download size={11} /> 케이블 리스트 (.xlsx)
+            </button>
+            <button onClick={() => { onExportNodeInfo(); setDownloadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-emerald-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <Download size={11} /> 노드 정보 (.xlsx)
+            </button>
+            <button onClick={() => { onJsonSave(); setDownloadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-yellow-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <FileJson size={11} /> JSON 저장
+            </button>
+            <button onClick={() => { onExportAllData(); setDownloadsOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-yellow-300 hover:bg-slate-700 hover:text-white transition-colors text-left">
+              <FileJson size={11} /> JSON 전체 내보내기
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ── Hidden inputs ── */}
       <input type="file" ref={cableFileRef} onChange={handleCableFileUpload} accept=".xlsx,.xls,.csv" className="hidden" />

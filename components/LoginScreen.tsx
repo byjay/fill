@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle } from '../services/firebase';
+import { submitApprovalRequestAPI } from '../services/apiClient';
 
 interface LoginScreenProps {
   onLogin: (userInfo?: { name: string; email: string; provider: string; uid?: string }) => void;
@@ -65,10 +66,39 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   };
 
   /* ── 승인 요청 ─────────────────────────────────── */
-  const handleSendApproval = () => {
+  const handleSendApproval = async () => {
+    if (!pendingUser) return;
+    // 1. Backend D1 저장 (pendingUser.uid를 직접 Authorization으로 사용 → 'anonymous' 충돌 방지)
+    try {
+      await submitApprovalRequestAPI({
+        name: approvalName,
+        email: pendingUser.email,
+        company: approvalCompany,
+        phone: approvalPhone,
+        provider: 'google',
+      }, pendingUser.uid);  // ← uid 직접 전달 (핵심!)
+    } catch { /* ignore - fallback below */ }
+    // 2. localStorage 저장 (fallback)
+    try {
+      const newReq = {
+        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        user_id: pendingUser.uid,
+        name: approvalName,
+        email: pendingUser.email,
+        company: approvalCompany,
+        phone: approvalPhone,
+        provider: 'google',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+      const existing = JSON.parse(localStorage.getItem('scms_approval_requests') || '[]');
+      const deduped = existing.filter((r: any) => r.user_id !== pendingUser.uid);
+      localStorage.setItem('scms_approval_requests', JSON.stringify([newReq, ...deduped]));
+    } catch { /* ignore */ }
+    // 3. 이메일 클라이언트 열기 (백업)
     const subject = encodeURIComponent('[SCM] 사용 승인 요청');
     const body = encodeURIComponent(
-      `[SCM 사용 승인 요청]\n\n실명: ${approvalName}\n회사명: ${approvalCompany}\n전화번호: ${approvalPhone}\n이메일: ${pendingUser?.email}\nUID: ${pendingUser?.uid}\n\n---\nSCM v${BUILD_VERSION}`
+      `[SCM 사용 승인 요청]\n\n실명: ${approvalName}\n회사명: ${approvalCompany}\n전화번호: ${approvalPhone}\n이메일: ${pendingUser.email}\nUID: ${pendingUser.uid}\n\n---\nSCM v${BUILD_VERSION}`
     );
     window.open(`mailto:${ADMIN_CONTACT}?subject=${subject}&body=${body}`, '_blank');
     setApprovalSent(true);
@@ -143,9 +173,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     <div className="h-full w-full max-w-[430px] flex flex-col bg-[#0f1829] overflow-hidden mx-auto border-x border-slate-800/50" style={{ animation: 'fadeInUp 0.3s ease' }}>
 
       {/* 상단: 로고 (이미지만, 배경박스 없이) */}
-      <div className="shrink-0 flex items-center justify-center gap-4 px-6 pt-8 pb-4">
-        <img src="/logo.jpg" alt="SEASTAR" className="h-14 object-contain" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
-        <img src="/scms_logo.png" alt="SCM" className="h-14 object-contain" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+      <div className="shrink-0 flex items-center justify-center gap-4 px-6 pt-4 pb-2">
+        <img src="/logo.jpg" alt="SEASTAR" className="h-11 object-contain rounded px-2 bg-white" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+        <img src="/scms_logo.png" alt="SCM" className="h-11 object-contain" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
       </div>
 
       {/* 로그인 버튼 영역 */}
@@ -162,7 +192,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         <button
           onClick={handleGoogle}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 px-4 rounded-2xl transition-all disabled:opacity-50 text-sm shadow-lg"
+          className="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-900 font-bold py-2.5 px-4 rounded-2xl transition-all disabled:opacity-50 text-sm shadow-lg"
         >
           {loading ? (
             <span className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -217,14 +247,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         </button>
       </div>
 
-      {/* 하단: 동영상 — 비율 유지하며 전체 채움 */}
-      <div className="flex-1 relative overflow-hidden mt-2 min-h-0">
-        <video autoPlay loop muted playsInline
-          className="absolute inset-0 w-full h-full object-cover opacity-80">
-          <source src="/scms.mp4" type="video/mp4" />
-        </video>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0f1829] via-[#0f182930] to-transparent" />
-        <div className="absolute inset-x-0 bottom-4 flex flex-col items-center gap-1 pointer-events-none">
+      {/* 하단: 동영상 — 원본 비율 유지 (좌우 잘림 없음) */}
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-black/20">
+        <div className="relative w-full mt-2">
+          <video autoPlay loop muted playsInline
+            className="w-full block opacity-85"
+            style={{ objectFit: 'contain', maxHeight: '52vh' }}>
+            <source src="/scms.mp4" type="video/mp4" />
+          </video>
+          {/* 아래쪽 페이드 */}
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#0f1829] to-transparent pointer-events-none" />
+        </div>
+        <div className="py-3 flex flex-col items-center gap-1">
           <span className="text-[10px] font-black text-white/50 tracking-[0.35em] uppercase">Securing Network Integrity</span>
           <div className="w-8 h-0.5 bg-blue-400/60" />
         </div>
@@ -233,7 +267,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       {/* 최하단 footer */}
       <div className="shrink-0 py-3 text-center">
         <p className="text-[9px] text-slate-600 font-mono tracking-wider">SECURE CONNECTION ESTABLISHED</p>
-        <p className="text-[9px] text-slate-700">© 2025 SEASTAR Corp. All rights reserved.</p>
+        <p className="text-[9px] text-slate-700">© 2023 SEASTAR Corp. All rights reserved.</p>
       </div>
 
       <style>{`

@@ -461,7 +461,18 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
 
       <div className="flex-1 flex flex-col relative bg-slate-100">
         {systemResult ? (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden relative">
+            {/* Loading overlay when re-calculating */}
+            {isCalculating && (
+              <div className="absolute inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <p className="text-blue-400 font-bold text-sm">재계산 중...</p>
+                <div className="w-64 bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                  <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-500 rounded-full animate-pulse" style={{width: '100%'}} />
+                </div>
+                <div className="text-slate-400 text-xs">경과: {(calcElapsed / 1000).toFixed(1)}초 | {activeCables.length} 케이블</div>
+              </div>
+            )}
             {/* RECOMMENDED badge overlay */}
             {isRecommended && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">

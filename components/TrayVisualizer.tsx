@@ -415,7 +415,7 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
       </div>
 
       {!compact && (
-      <div className="w-full lg:w-48 flex flex-col bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden shrink-0">
+      <div className="w-full lg:w-80 flex flex-col bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden shrink-0">
         <div className="bg-slate-900 text-white p-3.5 flex items-center gap-2 border-b border-slate-800">
           <List size={14} className="text-blue-500" />
           <h3 className="text-[10px] font-black uppercase tracking-widest leading-none">CABLE INDEX</h3>
@@ -430,36 +430,55 @@ const TrayVisualizer: React.FC<TrayVisualizerProps> = ({
                 </span>
               </div>
               <div className="max-h-[500px] overflow-y-auto">
-                <table className="w-full text-[10px] table-fixed">
+                <table className="min-w-full text-[9px] table-auto">
                   <thead className="sticky top-0 bg-white shadow-sm z-10">
                     <tr className="text-left font-black text-slate-400 uppercase border-b border-slate-100">
-                      <th className="w-8 px-2 py-2 text-center">NO</th>
-                      <th className="px-1 py-2">NAME</th>
-                      <th className="w-10 px-2 py-2 text-right">OD</th>
+                      <th className="w-7 px-1 py-1.5 text-center">NO</th>
+                      <th className="px-1 py-1.5">NAME</th>
+                      <th className="w-12 px-1 py-1.5">TYPE</th>
+                      <th className="w-8 px-1 py-1.5 text-right">OD</th>
+                      <th className="px-1 py-1.5">FROM→TO</th>
+                      <th className="w-10 px-1 py-1.5 text-right">LEN</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 font-medium">
                     {tier.cables.map(c => {
                        const isHighlighted = highlightedId === c.id;
+                       const typeColor = getTypeColor(c.type);
                        return (
-                          <tr 
-                            key={c.id} 
+                          <tr
+                            key={c.id}
                             onClick={() => handleCableClick(c.id)}
                             className={`cursor-pointer transition-colors border-b border-slate-50 last:border-0 ${
-                                isHighlighted 
-                                ? 'bg-yellow-100 hover:bg-yellow-200 ring-1 ring-inset ring-yellow-300' 
+                                isHighlighted
+                                ? 'bg-yellow-100 hover:bg-yellow-200 ring-1 ring-inset ring-yellow-300'
                                 : 'hover:bg-blue-50'
                             }`}
                           >
-                            <td className="px-2 py-2 text-center">
-                              <span className={`inline-block w-5 h-5 rounded font-black flex items-center justify-center text-[8px] transition-colors
+                            <td className="px-1 py-1 text-center">
+                              <span className={`inline-flex w-5 h-5 rounded font-black items-center justify-center text-[8px] transition-colors
                                   ${isHighlighted ? 'bg-yellow-500 text-white' : 'bg-slate-200 text-slate-900'}
                               `}>
                                 {c.displayIndex}
                               </span>
                             </td>
-                            <td className="px-1 py-2 truncate text-slate-800 font-bold" title={`${c.name} (Sys: ${c.system || '-'})`}>{c.name}</td>
-                            <td className="px-2 py-2 text-right font-mono font-black text-slate-950">{c.od.toFixed(0)}</td>
+                            <td className="px-1 py-1 truncate text-slate-800 font-bold max-w-[64px]" title={`${c.name} (Sys: ${c.system || '-'})`}>{c.name}</td>
+                            <td className="px-1 py-1 max-w-[48px]">
+                              <span
+                                className="inline-block truncate rounded px-1 font-bold text-white text-[8px] leading-4 max-w-full"
+                                style={{ backgroundColor: typeColor }}
+                                title={c.type || '-'}
+                              >
+                                {c.type || '-'}
+                              </span>
+                            </td>
+                            <td className="px-1 py-1 text-right font-mono font-black text-slate-950">{c.od.toFixed(0)}</td>
+                            <td className="px-1 py-1 truncate text-slate-500 max-w-[72px]" title={`${c.fromNode || '-'} → ${c.toNode || '-'}`}>
+                              {c.fromNode || '-'} → {c.toNode || '-'}
+                            </td>
+                            <td className="px-1 py-1 text-right font-mono font-black text-slate-700 whitespace-nowrap">
+                              {(c.calculatedLength || c.length || 0).toFixed(0)}m
+                            </td>
                           </tr>
                        );
                     })}

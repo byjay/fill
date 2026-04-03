@@ -25,7 +25,7 @@ const COL_INIT = [
   80, 80, 80, 40,
   80, 80, 80, 40,
   55, 45, 70, 60, 45, 70, 45,
-  320,
+  400,
 ];
 
 // ── 편집 폼 필드 (3열 배치용) ─────────────────────────────────────────────────
@@ -81,6 +81,17 @@ const CableListTab: React.FC<CableListTabProps> = ({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null); // originalIndex
   const [editState, setEditState] = useState<Partial<CableData>>({});
   const [panelExpanded, setPanelExpanded] = useState(true);
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = useCallback((key: string) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }, [sortKey]);
   const { widths, startResize } = useResizableColumns(COL_INIT);
 
   // ── 필터링 ───────────────────────────────────────────────────────────────
@@ -104,6 +115,33 @@ const CableListTab: React.FC<CableListTabProps> = ({
         return matchSearch && matchSys;
       });
   }, [cableData, searchTerm, systemFilter]);
+
+  const sortedCables = useMemo(() => {
+    if (!sortKey) return filteredCables;
+    return [...filteredCables].sort((a, b) => {
+      const getVal = (cable: CableData): string | number => {
+        const map: Record<string, keyof CableData> = {
+          '#': 'id', 'SYS': 'system', 'PG': 'wdPage', 'NAME': 'name', 'TYPE': 'type',
+          'F_ROOM': 'fromRoom', 'F_EQUIP': 'fromEquip', 'F_NODE': 'fromNode', 'F_R': 'fromRest',
+          'T_ROOM': 'toRoom', 'T_EQUIP': 'toEquip', 'T_NODE': 'toNode', 'T_R': 'toRest',
+          'LEN': 'calculatedLength', 'OD': 'od', 'CHK': 'checkNode', 'DECK': 'supplyDeck',
+          'WGT': 'porWeight', 'REM': 'remark', 'REV': 'revision', 'PATH': 'calculatedPath',
+        };
+        const prop = map[sortKey];
+        if (!prop) return '';
+        if (sortKey === 'LEN') return cable.calculatedLength || cable.length || 0;
+        const v = cable[prop];
+        return v ?? '';
+      };
+      const av = getVal(a.cable), bv = getVal(b.cable);
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return sortDir === 'asc' ? av - bv : bv - av;
+      }
+      return sortDir === 'asc'
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+    });
+  }, [filteredCables, sortKey, sortDir]);
 
   // 선택된 케이블 (originalIndex 기준)
   const selectedCable = selectedIndex !== null ? cableData[selectedIndex] : null;
@@ -232,7 +270,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
 
           {/* 폼 + PATH 레이아웃 (좌 70%: 폼 컴팩트, 우 30%: DECK PATH) */}
           {panelExpanded && (
-            <div className="flex gap-2 p-1.5" style={{ maxHeight: '110px' }}>
+            <div className="flex gap-2 p-1.5" style={{ maxHeight: '150px' }}>
               {/* 좌: 컴팩트 폼 (70%) */}
               <div className="flex-[7] overflow-y-auto space-y-1">
                 {FORM_FIELDS.map((row, rowIdx) => (
@@ -272,7 +310,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
                     // 데크 코드별 그룹핑 (노드 앞 2글자가 데크 코드)
                     const deckGroups: Record<string, string[]> = {};
                     pathNodes.forEach((n: string) => {
-                      const deck = n.replace(/[0-9]+[A-Z]?$/i, '').replace(/\d+$/, '') || n.substring(0, 2);
+                      const deck = (n.match(/^[A-Za-z]+/)?.[0] || n.substring(0, 2)).substring(0, 2).toUpperCase();
                       if (!deckGroups[deck]) deckGroups[deck] = [];
                       deckGroups[deck].push(n);
                     });
@@ -302,21 +340,29 @@ const CableListTab: React.FC<CableListTabProps> = ({
           <colgroup>
             {widths.map((w, i) => <col key={i} style={{ width: w }} />)}
           </colgroup>
-          <thead className="bg-slate-950 text-slate-300 uppercase sticky top-0 z-10" style={{ fontSize: '11px' }}>
+          <thead className="bg-slate-800 text-white uppercase sticky top-0 z-10" style={{ fontSize: '13px' }}>
             <tr>
               {COL_HEADERS.map((label, i) => (
                 <th
                   key={i}
-                  className="relative px-2 py-2 font-bold border border-slate-600 overflow-hidden select-none whitespace-nowrap"
+                  onClick={() => handleSort(label)}
+                  className="relative px-2 py-2 font-black border border-slate-500 overflow-hidden select-none whitespace-nowrap cursor-pointer hover:bg-slate-700 transition-colors"
                 >
-                  <span className="truncate block pr-1">{label}</span>
-                  <ResizeHandle onMouseDown={(e) => startResize(i, e)} />
+                  <span className="flex items-center gap-1 pr-2">
+                    <span>{label}</span>
+                    {sortKey === label ? (
+                      <span className="text-blue-400 text-[10px]">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                    ) : (
+                      <span className="text-slate-600 text-[10px]">⇅</span>
+                    )}
+                  </span>
+                  <ResizeHandle onMouseDown={(e) => { e.stopPropagation(); startResize(i, e); }} />
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700">
-            {filteredCables.map(({ cable, originalIndex }) => {
+            {sortedCables.map(({ cable, originalIndex }) => {
               const isSelected = selectedIndex === originalIndex;
               const rowCls = isSelected
                 ? 'bg-amber-950/50 border-l-2 border-l-amber-400'
@@ -341,9 +387,9 @@ const CableListTab: React.FC<CableListTabProps> = ({
                   {/* TYPE */}
                   <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis" title={cable.type}>{cable.type}</td>
                   {/* F_ROOM */}
-                  <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{cable.fromRoom || '-'}</td>
+                  <td className="px-2 py-1.5 break-words" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{cable.fromRoom || '-'}</td>
                   {/* F_EQUIP */}
-                  <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{cable.fromEquip || '-'}</td>
+                  <td className="px-2 py-1.5 break-words" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{cable.fromEquip || '-'}</td>
                   {/* F_NODE */}
                   <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis text-emerald-400" title={cable.fromNode}>
                     {cable.fromNode || '-'}
@@ -351,9 +397,9 @@ const CableListTab: React.FC<CableListTabProps> = ({
                   {/* F_R */}
                   <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden font-mono text-right">{cable.fromRest || '-'}</td>
                   {/* T_ROOM */}
-                  <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{cable.toRoom || '-'}</td>
+                  <td className="px-2 py-1.5 break-words" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{cable.toRoom || '-'}</td>
                   {/* T_EQUIP */}
-                  <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{cable.toEquip || '-'}</td>
+                  <td className="px-2 py-1.5 break-words" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{cable.toEquip || '-'}</td>
                   {/* T_NODE */}
                   <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis text-rose-400" title={cable.toNode}>
                     {cable.toNode || '-'}
@@ -380,18 +426,40 @@ const CableListTab: React.FC<CableListTabProps> = ({
                   </td>
                   {/* REV */}
                   <td className="px-2 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{cable.revision || '-'}</td>
-                  {/* PATH — 넓은 칸, 줄바꿈 허용 */}
+                  {/* PATH — deck 코드별 그룹핑 */}
                   <td
-                    className="px-2 py-1.5 text-slate-400 font-mono text-[10px]"
-                    style={{ wordBreak: 'break-all', whiteSpace: 'normal', lineHeight: '1.4' }}
+                    className="px-2 py-1.5 text-[10px]"
+                    style={{ whiteSpace: 'normal', lineHeight: '1.5', minWidth: '300px' }}
                     title={cable.calculatedPath || cable.path || ''}
                   >
-                    {cable.calculatedPath || cable.path || <span className="text-slate-600 italic">no path</span>}
+                    {(() => {
+                      const pathStr = cable.calculatedPath || cable.path || '';
+                      if (!pathStr) return <span className="text-slate-600 italic">no path</span>;
+                      const pathNodes = pathStr.split(/[,→]/).map(s => s.trim()).filter(Boolean);
+                      // 앞 2글자로 deck 그룹핑
+                      const deckGroups: Record<string, string[]> = {};
+                      const deckOrder: string[] = [];
+                      pathNodes.forEach(n => {
+                        const dk = n.match(/^[A-Za-z]+/)?.[0]?.substring(0, 2).toUpperCase() || n.substring(0, 2).toUpperCase();
+                        if (!deckGroups[dk]) { deckGroups[dk] = []; deckOrder.push(dk); }
+                        deckGroups[dk].push(n);
+                      });
+                      return (
+                        <div className="space-y-0.5">
+                          {deckOrder.map(dk => (
+                            <div key={dk} className="flex items-start gap-1.5">
+                              <span className="inline-block text-[9px] font-black text-amber-400 bg-amber-900/20 border border-amber-700/30 px-1 rounded shrink-0 mt-0.5 min-w-[24px] text-center">{dk}</span>
+                              <span className="text-emerald-300 font-mono break-all leading-snug">{deckGroups[dk].join(', ')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               );
             })}
-            {filteredCables.length === 0 && (
+            {sortedCables.length === 0 && (
               <tr>
                 <td colSpan={COL_HEADERS.length} className="px-4 py-8 text-center text-slate-500 italic">
                   No cables found
@@ -425,7 +493,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
           <span>행을 클릭하면 편집 패널이 열립니다</span>
         )}
         <span className="ml-auto text-slate-600">
-          {filteredCables.length} / {cableData.length} cables
+          {sortedCables.length} / {cableData.length} cables
         </span>
       </div>
     </div>

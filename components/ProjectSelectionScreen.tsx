@@ -1,34 +1,20 @@
 import React, { useState } from 'react';
 import { useProject } from '../contexts/ProjectContext';
 import { Plus, Ship, Trash2, ChevronRight, Clock, Database, LogIn } from 'lucide-react';
+import ProjectUploadModal, { ProjectUploadResult } from './ProjectUploadModal';
+import { CableData, NodeData } from '../types';
 
 interface Props {
   userName?: string;
   onLogout?: () => void;
+  onAutoRoute?: () => void;
 }
 
-export default function ProjectSelectionScreen({ userName, onLogout }: Props) {
-  const { projects, selectProject, createProject, removeProject, isLoading } = useProject();
+export default function ProjectSelectionScreen({ userName, onLogout, onAutoRoute }: Props) {
+  const { projects, selectProject, createProject, removeProject, updateCablesAndNodes, isLoading } = useProject();
   const [showCreate, setShowCreate] = useState(false);
-  const [vesselName, setVesselName] = useState('');
-  const [vesselNo, setVesselNo] = useState('');
   const [creating, setCreating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-
-  const handleCreate = async () => {
-    if (!vesselName.trim()) return;
-    setCreating(true);
-    try {
-      await createProject(vesselName.trim(), vesselNo.trim());
-      setShowCreate(false);
-      setVesselName('');
-      setVesselNo('');
-    } catch (err) {
-      console.warn('프로젝트 생성 실패:', err);
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const handleDelete = async (id: string) => {
     await removeProject(id);
@@ -75,51 +61,30 @@ export default function ProjectSelectionScreen({ userName, onLogout }: Props) {
             </button>
           </div>
 
-          {/* Create form */}
+          {/* Create modal */}
           {showCreate && (
-            <div className="bg-slate-800 border border-blue-500/30 rounded-xl p-5 mb-4 shadow-xl">
-              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <Ship size={16} className="text-blue-400" /> 새 호선 등록
-              </h3>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">호선명 *</label>
-                  <input
-                    type="text"
-                    value={vesselName}
-                    onChange={e => setVesselName(e.target.value)}
-                    placeholder="예: VESSEL-001"
-                    className="w-full bg-slate-900 border border-slate-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
-                    onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">호선번호</label>
-                  <input
-                    type="text"
-                    value={vesselNo}
-                    onChange={e => setVesselNo(e.target.value)}
-                    placeholder="예: H-2024-001"
-                    className="w-full bg-slate-900 border border-slate-700 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
-                    onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => { setShowCreate(false); setVesselName(''); setVesselNo(''); }}
-                  className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white bg-slate-700 rounded-lg transition-colors"
-                >취소</button>
-                <button
-                  onClick={handleCreate}
-                  disabled={!vesselName.trim() || creating}
-                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-lg transition-colors"
-                >
-                  {creating ? '생성 중...' : '등록'}
-                </button>
-              </div>
-            </div>
+            <ProjectUploadModal
+              onCancel={() => setShowCreate(false)}
+              onConfirm={async (result: ProjectUploadResult) => {
+                setCreating(true);
+                try {
+                  await createProject(result.vesselName, result.vesselNo);
+                  await updateCablesAndNodes(
+                    result.cables as CableData[],
+                    result.nodes as NodeData[],
+                    '파일 업로드',
+                  );
+                  if (result.autoRoute && onAutoRoute) {
+                    onAutoRoute();
+                  }
+                  setShowCreate(false);
+                } catch (err) {
+                  console.warn('프로젝트 생성 실패:', err);
+                } finally {
+                  setCreating(false);
+                }
+              }}
+            />
           )}
 
           {/* Project list */}

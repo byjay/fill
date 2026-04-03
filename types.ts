@@ -196,27 +196,37 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   canDelete: false,
 };
 
-export const MENU_PERMISSIONS: Record<string, keyof UserPermissions> = {
-  dashboard: 'dashboard',
-  cables: 'cables',
-  nodes: 'nodes',
-  bom: 'bom',
-  routing: 'routing',
-  trayfill: 'trayfill',
-  '3d': 'view3d',
-  analysis: 'analysis',
-  history: 'history',
-  project: 'project',
-  cabletype: 'cabletype',
-  interference: 'interference',
-  voltagedrop: 'voltagedrop',
-  classrule: 'classrule',
-  'bom-adv': 'bomAdv',
-  drum: 'drum',
-  'deck-qty': 'deckQty',
-  bottleneck: 'bottleneck',
-  'kave-router': 'kaveRouter',
-};
+export const MENU_PERMISSIONS: Array<{
+  id: keyof UserPermissions;
+  label: string;
+  group: '기본 메뉴' | '고급 메뉴' | '특별 권한';
+}> = [
+  // 기본 메뉴
+  { id: 'dashboard',   label: 'Dashboard',     group: '기본 메뉴' },
+  { id: 'cables',      label: 'Cable List',    group: '기본 메뉴' },
+  { id: 'nodes',       label: 'Node Info',     group: '기본 메뉴' },
+  { id: 'bom',         label: 'BOM',           group: '기본 메뉴' },
+  { id: 'routing',     label: 'Routing',       group: '기본 메뉴' },
+  { id: 'trayfill',    label: 'Tray Fill',     group: '기본 메뉴' },
+  { id: 'view3d',      label: '3D View',       group: '기본 메뉴' },
+  { id: 'analysis',    label: 'Analysis',      group: '기본 메뉴' },
+  { id: 'history',     label: 'History',       group: '기본 메뉴' },
+  { id: 'project',     label: 'Project',       group: '기본 메뉴' },
+  { id: 'cabletype',   label: 'Cable Type',    group: '기본 메뉴' },
+  // 고급 메뉴
+  { id: 'interference', label: '간섭 검사',   group: '고급 메뉴' },
+  { id: 'voltagedrop',  label: '전압강하',    group: '고급 메뉴' },
+  { id: 'classrule',    label: '선급룰',      group: '고급 메뉴' },
+  { id: 'bomAdv',       label: 'BOM 고급',    group: '고급 메뉴' },
+  { id: 'drum',         label: '드럼 관리',   group: '고급 메뉴' },
+  { id: 'deckQty',      label: '갑판 물량',   group: '고급 메뉴' },
+  { id: 'bottleneck',   label: '병목 분석',   group: '고급 메뉴' },
+  { id: 'kaveRouter',   label: '노드 에디터', group: '고급 메뉴' },
+  // 특별 권한
+  { id: 'canEdit',      label: '편집 가능',   group: '특별 권한' },
+  { id: 'canExport',    label: '내보내기',     group: '특별 권한' },
+  { id: 'canDelete',    label: '삭제 가능',   group: '특별 권한' },
+];
 
 export interface AdminUser {
   user_id: string;
@@ -227,6 +237,8 @@ export interface AdminUser {
   permissions: Partial<UserPermissions>;
   created_at: string;
   last_login?: string;
+  last_seen?: string;
+  project_count?: number;
 }
 
 export interface ApprovalRequest {

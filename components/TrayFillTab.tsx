@@ -146,22 +146,24 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
     }
     if (allCells.length === 0) return null;
 
-    // fillRatio 높은 순 정렬 (가장 효율적인 것 = 목표치에 가장 가까운 것)
-    allCells.sort((a, b) => b.fillRatio - a.fillRatio);
+    // Primary: 단수 적은 것 우선, 같은 단수면 fillRatio 높은 것
+    allCells.sort((a, b) => {
+      if (a.tiers !== b.tiers) return a.tiers - b.tiers; // 단수 오름차순 (적은 것 우선)
+      return b.fillRatio - a.fillRatio; // fillRatio 높은 것
+    });
     const primary = allCells[0];
 
-    // Secondary: 반드시 다른 단수! 등가 면적(tier×width) 비슷한 것 우선
-    // 예: primary가 LA8(1×800=800) → LB4(2×400=800) 동일 면적
+    // Secondary: Primary보다 높은 단수만! 등가 면적(tier×width) 비슷한 것 우선
+    // 예: primary LA8(1×800) → secondary LB4(2×400) 동일 면적
     const primaryArea = primary.tiers * primary.width;
-    const otherTiers = allCells
-      .filter(c => c.tiers !== primary.tiers)
+    const higherTiers = allCells
+      .filter(c => c.tiers > primary.tiers)
       .map(c => ({ ...c, areaDiff: Math.abs(c.tiers * c.width - primaryArea) }))
       .sort((a, b) => {
-        // 1순위: 면적 차이가 적은 것, 2순위: fillRatio 높은 것
-        if (a.areaDiff !== b.areaDiff) return a.areaDiff - b.areaDiff;
-        return b.fillRatio - a.fillRatio;
+        if (a.areaDiff !== b.areaDiff) return a.areaDiff - b.areaDiff; // 면적 차이 적은 것
+        return a.tiers - b.tiers; // 같으면 단수 적은 것
       });
-    const secondary = otherTiers.length > 0 ? otherTiers[0] : null;
+    const secondary = higherTiers.length > 0 ? higherTiers[0] : null;
     return { primary, secondary };
   }, [systemResult, fillRatioLimit]);
 

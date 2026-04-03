@@ -45,7 +45,7 @@ const TrayFillTab: React.FC<TrayFillTabProps> = ({
   const [bgProgress, setBgProgress] = useState({ done: 0, total: 0 });
 
   // Configuration State
-  const [fillRatioLimit, setFillRatioLimit] = useState(40);
+  const [fillRatioLimit, setFillRatioLimit] = useState(75);
   const [maxHeightLimit, setMaxHeightLimit] = useState(60);
   const [numberOfTiers, setNumberOfTiers] = useState(1);
   const [manualWidth, setManualWidth] = useState<number | null>(null);

@@ -240,7 +240,7 @@ const CableListTab: React.FC<CableListTabProps> = ({
 
           {/* 폼 + PATH 레이아웃 (좌 70%: 폼 컴팩트, 우 30%: DECK PATH) */}
           {panelExpanded && (
-            <div className="flex gap-2 p-2" style={{ maxHeight: '160px' }}>
+            <div className="flex gap-2 p-1.5" style={{ maxHeight: '110px' }}>
               {/* 좌: 컴팩트 폼 (70%) */}
               <div className="flex-[7] overflow-y-auto space-y-1">
                 {FORM_FIELDS.map((row, rowIdx) => (
